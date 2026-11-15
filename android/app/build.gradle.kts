@@ -36,7 +36,9 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "io.github.jeiel85.findmywifephone"
+        // Kotlin namespace stays io.github.jeiel85.findmywifephone; the app id is what Android and
+        // Play see (renamed for Play in v0.3.0 — DECISIONS.md D-9).
+        applicationId = "com.jeiel85.ponerdi"
         minSdk = 29
         targetSdk = 35
         versionCode = appVersionCode
