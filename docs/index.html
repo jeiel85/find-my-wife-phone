@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>폰 찾기 — 소파 밑 폰도 버튼 한 번에</title>
+<meta name="description" content="가족 폰이 안 보일 때 버튼 하나로 울려요. 무음·방해 금지여도 울리고, 찾으면 원래 설정으로. 받는 사람이 10초 안에 거절할 수 있고, 누가 언제 찾았는지 모두 기록돼요.">
+<meta property="og:title" content="폰 찾기 — 소파 밑 폰도 버튼 한 번에">
+<meta property="og:description" content="무음이어도 울리고, 찾으면 원래대로. 거절할 수 있고, 모두 기록되는 가족용 폰 찾기 앱.">
+<meta property="og:image" content="https://jeiel85.github.io/find-my-wife-phone/assets/og.png">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#E8ECFF">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Jua&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+<header class="nav">
+  <a class="brand" href="./"><img src="assets/icon-192.png" alt="" width="32" height="32"><span>폰 찾기</span></a>
+  <nav aria-label="주요 메뉴">
+    <a href="#how">동작 방식</a>
+    <a href="#control">받는 사람의 권한</a>
+    <a href="#privacy">개인정보</a>
+    <a href="https://github.com/jeiel85/find-my-wife-phone">GitHub</a>
+  </nav>
+  <a class="btn btn-small" href="#install">설치하기</a>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="hero-copy">
+      <p class="eyebrow">“여보, 내 폰 어디 있는지 알아?”</p>
+      <h1>소파 밑에 있어도,<br>버튼 한 번이면 울려요</h1>
+      <p class="lede">무음이든 방해 금지든 상관없이 크게 울리고, 찾으면 소리 설정이 원래대로 돌아가요. 집 안이든 밖이든 인터넷만 되면 돼요.</p>
+      <div class="cta">
+        <a class="btn" href="#install">Android 앱 받기</a>
+        <a class="btn btn-ghost" href="#how">어떻게 동작하나요</a>
+      </div>
+      <p class="fine">Android 10 이상 · 무료 · 오픈소스</p>
+    </div>
+
+    <div class="stage" aria-label="동작 데모: 오른쪽 폰의 울리기 버튼을 눌러 보세요">
+      <svg class="room" viewBox="0 0 560 420" role="img" aria-labelledby="roomTitle">
+        <title id="roomTitle">거실 소파. 가운데 쿠션 밑에 폰이 숨어 있어요.</title>
+        <defs>
+          <radialGradient id="lampGlow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#FFD66B" stop-opacity=".55"/>
+            <stop offset="1" stop-color="#FFD66B" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle cx="470" cy="110" r="120" fill="url(#lampGlow)"/>
+        <ellipse cx="290" cy="346" rx="270" ry="40" fill="#D6DCFA"/>
+        <!-- lamp -->
+        <rect x="466" y="120" width="8" height="210" rx="4" fill="#1F2235"/>
+        <path d="M430 120 L510 120 L490 70 L450 70 Z" fill="#FFD66B"/>
+        <ellipse cx="470" cy="332" rx="34" ry="7" fill="#1F2235" opacity=".18"/>
+        <!-- plant -->
+        <g transform="translate(40 230)">
+          <path d="M30 100 C 10 60, 0 30, 20 0 C 30 30, 34 60, 30 100Z" fill="#4E8F6E"/>
+          <path d="M34 100 C 50 70, 70 50, 76 20 C 56 40, 42 64, 34 100Z" fill="#3E7A5C"/>
+          <path d="M18 100 h34 l-5 32 h-24z" fill="#FF6B5B"/>
+        </g>
+        <!-- sofa -->
+        <ellipse cx="290" cy="336" rx="200" ry="10" fill="#1F2235" opacity=".15"/>
+        <rect x="110" y="160" width="360" height="120" rx="34" fill="#3340A8"/>
+        <rect x="88" y="220" width="70" height="110" rx="30" fill="#2A3590"/>
+        <rect x="422" y="220" width="70" height="110" rx="30" fill="#2A3590"/>
+        <rect x="140" y="262" width="300" height="62" rx="18" fill="#3D4BBE"/>
+        <rect x="140" y="322" width="16" height="16" rx="4" fill="#1F2235"/>
+        <rect x="424" y="322" width="16" height="16" rx="4" fill="#1F2235"/>
+        <!-- the hidden phone -->
+        <g id="hiddenPhone" transform="translate(268 238) rotate(-12)">
+          <rect width="46" height="78" rx="9" fill="#1F2235"/>
+          <rect x="4" y="6" width="38" height="62" rx="5" class="screen" fill="#2B2F45"/>
+        </g>
+        <g id="ripples" transform="translate(292 268)" aria-hidden="true">
+          <circle r="20"/><circle r="20"/><circle r="20"/>
+        </g>
+        <!-- cushions -->
+        <rect x="150" y="196" width="92" height="80" rx="22" fill="#FFD66B" transform="rotate(-6 196 236)"/>
+        <g id="cushion"><rect x="244" y="200" width="98" height="84" rx="24" fill="#FF6B5B"/>
+          <path d="M262 222 q30 10 62 0" stroke="#E04A3A" stroke-width="3" fill="none" stroke-linecap="round"/></g>
+        <rect x="346" y="198" width="88" height="78" rx="22" fill="#9AA6FF" transform="rotate(7 390 237)"/>
+        <!-- speech bubble -->
+        <g id="bubble" transform="translate(300 120)">
+          <path d="M-72 -26 h144 a16 16 0 0 1 16 16 v28 a16 16 0 0 1 -16 16 h-60 l-12 16 l-12 -16 h-60 a16 16 0 0 1 -16 -16 v-28 a16 16 0 0 1 16 -16z" fill="#fff"/>
+          <text x="0" y="12" text-anchor="middle">여기 있어요!</text>
+        </g>
+      </svg>
+
+      <div class="mock" role="group" aria-label="남편 폰 화면">
+        <div class="mock-top"><span class="avatar">아</span><div><b>아내</b><small id="mockSeen">마지막 응답 3분 전 · 🔋 64%</small></div></div>
+        <button class="ring" id="ringBtn" type="button"><span class="ring-icon" aria-hidden="true">🔔</span><span id="ringLabel">울리기</span></button>
+        <p class="mock-status" id="mockStatus" aria-live="polite">눌러 보세요</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="how" class="band">
+    <div class="wrap">
+      <h2>누르면 이렇게 돼요</h2>
+      <p class="section-lede">요청이 바로 소리가 되지 않아요. 상대 폰에는 먼저 10초 동안 거절할 기회가 있어요.</p>
+      <ol class="timeline">
+        <li><time>0초</time><h3>‘울리기’를 눌러요</h3><p>요청은 두 폰만 아는 키로 암호화돼서 가요. 같은 Wi-Fi가 아니어도 돼요.</p></li>
+        <li><time>0–10초</time><h3>상대 폰 화면에 떠요</h3><p>잠금 화면 위에 “○○님이 폰을 찾고 있어요”가 뜨고, <b>거절하기</b>를 누를 수 있어요.</p></li>
+        <li><time>10초</time><h3>크게 울려요</h3><p>알람 소리로 울려서 무음·진동 모드도 뚫어요. 방해 금지 접근을 허용했다면 방해 금지 중에도 울려요.</p></li>
+        <li><time>찾으면</time><h3>원래대로 돌아가요</h3><p>‘찾았어요’를 누르면 소리가 멈추고, 볼륨과 방해 금지 설정이 울리기 전 그대로 돌아가요. 최대 2분 뒤엔 저절로 멈춰요.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="control" class="wrap">
+    <h2>받는 사람이 정해요</h2>
+    <p class="section-lede">가족끼리라도 “몰래”는 없어요. 내 폰이 언제, 누구 때문에 울렸고 위치를 보냈는지 내가 알 수 있어요.</p>
+    <div class="cards">
+      <article class="card">
+        <h3>거절하기</h3>
+        <p>울리기 전 10초, 위치를 보내기 전 10초 동안 언제든 거절할 수 있어요. 거절하면 상대 화면에 바로 표시돼요.</p>
+      </article>
+      <article class="card">
+        <h3>요청 받지 않기</h3>
+        <p>30분 · 1시간 · 3시간 · 내일 아침 8시까지 · 직접 끌 때까지. 그동안 오는 요청은 소리 없이 기록만 돼요. 상대 화면에도 “받지 않는 중”이라고 보여요.</p>
+      </article>
+      <article class="card">
+        <h3>위치는 세 가지 중에서</h3>
+        <p><b>알리고 10초 뒤 보내기</b>(기본, 폰을 잃어버렸을 때를 위해) · <b>내가 허용할 때만</b> · <b>보내지 않기</b>. 어느 쪽이든 보낼 때마다 알림이 떠요.</p>
+      </article>
+      <article class="card">
+        <h3>지울 수 없는 기록</h3>
+        <p>누가 내 폰을 울렸는지, 내 위치를 확인했는지 기록 화면에 남아요. 받은 요청 기록은 지울 수 없어요.</p>
+      </article>
+    </div>
+  </section>
+
+  <section id="privacy" class="band band-ink">
+    <div class="wrap">
+      <h2>중계 서버는 내용을 볼 수 없어요</h2>
+      <p class="section-lede">잠든 폰을 깨우려면 서버가 하나 필요해요. 그래서 서버가 아는 것을 가장 적게 만들었어요.</p>
+      <div class="ledger">
+        <div>
+          <h3>서버가 아는 것</h3>
+          <ul>
+            <li>기기마다 붙인 무작위 ID</li>
+            <li>어떤 ID끼리 연결됐는지</li>
+            <li>폰을 깨우는 데 쓰는 푸시 토큰</li>
+            <li>요청이 오간 횟수(남용 방지용, 하루 뒤 삭제)</li>
+          </ul>
+        </div>
+        <div>
+          <h3>서버가 모르는 것</h3>
+          <ul>
+            <li>울리기인지 위치 요청인지</li>
+            <li>위치 좌표, 배터리, 이름</li>
+            <li>거절했는지, 찾았는지</li>
+            <li>두 폰 사이의 암호화 키 — QR 안의 일회용 비밀값으로만 만들어져요</li>
+          </ul>
+        </div>
+      </div>
+      <p class="fine">P-256 ECDH + HKDF + AES-256-GCM. 자세한 내용은 <a href="https://github.com/jeiel85/find-my-wife-phone/blob/main/design/PROTOCOL.md">프로토콜 문서</a>에 있어요.</p>
+    </div>
+  </section>
+
+  <section id="install" class="wrap">
+    <h2>설치하고 연결하기</h2>
+    <ol class="steps">
+      <li><h3>두 폰 모두에 앱을 설치해요</h3><p>아래 버튼으로 APK를 받아 설치해요. “출처를 알 수 없는 앱” 허용을 물으면 이 설치에만 허용해 주세요.</p>
+        <a class="btn" href="https://github.com/jeiel85/find-my-wife-phone/releases/latest/download/find-my-wife-phone.apk">APK 받기</a>
+        <a class="link" href="https://github.com/jeiel85/find-my-wife-phone/releases/latest">릴리스 노트와 SHA-256</a></li>
+      <li><h3>이름을 정하고 권한을 켜요</h3><p>가족에게 보일 이름(예: 아내, 남편)을 정하고, 알림 · 잠금 화면 표시 · 방해 금지 접근 · 위치를 허용해요.</p></li>
+      <li><h3>QR로 연결해요</h3><p>한 폰에서 <b>내 QR 보여주기</b>, 다른 폰에서 <b>QR 스캔하기</b>. QR은 10분 동안 한 번만 쓸 수 있어요.</p></li>
+    </ol>
+  </section>
+
+  <section class="wrap faq">
+    <h2>자주 묻는 것</h2>
+    <details><summary>iPhone도 되나요?</summary><p>아직은 Android만 돼요. iPhone은 무음을 뚫고 울리려면 Apple의 별도 승인이 필요해요.</p></details>
+    <details><summary>같은 Wi-Fi에 있어야 하나요?</summary><p>아니요. 두 폰 모두 인터넷만 되면 어디서든 돼요. 반대로 인터넷이 끊기면 같은 집 안이어도 동작하지 않아요.</p></details>
+    <details><summary>배터리를 많이 쓰나요?</summary><p>평소에는 아무것도 하지 않아요. 요청이 올 때만 Google 푸시(FCM)로 깨어나요. 확실히 받으려면 배터리 최적화에서 제외해 주세요.</p></details>
+    <details><summary>몰래 위치를 볼 수 있나요?</summary><p>아니요. 위치를 보낼 때마다 상대 폰에 알림이 뜨고 기록에 남아요. 앱이나 알림을 숨기는 기능은 없어요.</p></details>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>폰 찾기 · <a href="https://github.com/jeiel85/find-my-wife-phone">GitHub</a> · MIT License</p>
+</footer>
+<script src="assets/site.js" defer></script>
+</body>
+</html>

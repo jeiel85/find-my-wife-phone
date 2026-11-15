@@ -1,0 +1,28 @@
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
+.DS_Store
+
+# Secrets — never commit
+android/app/google-services.json
+android/release-signing.properties
+.keystore/
+*.jks
+*.keystore
+*service-account*.json
+.secrets/
+
+# Relay
+relay/node_modules/
+relay/.wrangler/
+relay/.dev.vars
+
+# Tooling
+design/icon/codex.log
+
+# Kotlin daemon
+android/.kotlin/

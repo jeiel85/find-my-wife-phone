@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: a phone with sound waves. Single colour; the system tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M9,2h6a2,2 0,0 1,2 2v16a2,2 0,0 1,-2 2H9a2,2 0,0 1,-2 -2V4a2,2 0,0 1,2 -2zM9,4v14h6V4zM12,19.2a0.9,0.9 0,1 0,0.01 0z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M3.6,7.3l1.2,0.9C4,9.3 3.6,10.6 3.6,12s0.4,2.7 1.2,3.8l-1.2,0.9C2.6,15.3 2,13.7 2,12s0.6,-3.3 1.6,-4.7zM20.4,7.3C21.4,8.7 22,10.3 22,12s-0.6,3.3 -1.6,4.7l-1.2,-0.9c0.8,-1.1 1.2,-2.4 1.2,-3.8s-0.4,-2.7 -1.2,-3.8z" />
+</vector>

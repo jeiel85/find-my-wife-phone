@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>폰 찾기 연결</title>
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="../assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&family=Jua&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<main class="pair">
+  <img src="../assets/icon-192.png" alt="" width="72" height="72" style="border-radius:18px">
+  <h1 id="title" style="font-size:2rem;margin-top:16px">폰 찾기 연결</h1>
+  <p class="section-lede" id="lede" style="margin:12px auto 0">이 링크는 폰 찾기 앱에서 열어야 연결돼요.</p>
+
+  <div class="card">
+    <h3>앱이 이미 있다면</h3>
+    <p>아래 버튼을 누르면 앱의 연결 화면이 열려요. 보통은 앱 안의 <b>QR 스캔하기</b>로 바로 스캔하는 게 더 빨라요.</p>
+    <a class="btn" id="open" href="#">앱에서 열기</a>
+  </div>
+  <div class="card">
+    <h3>앱이 없다면</h3>
+    <p>먼저 앱을 설치하고, 상대 폰의 QR을 앱 안에서 다시 스캔해 주세요.</p>
+    <a class="btn btn-ghost" href="https://github.com/jeiel85/find-my-wife-phone/releases/latest/download/find-my-wife-phone.apk">APK 받기</a>
+  </div>
+  <p class="fine">연결 정보는 주소의 # 뒤에만 있어서 이 웹 서버로 전송되지 않아요.</p>
+</main>
+<script>
+  (() => {
+    const payload = location.hash.slice(1);
+    const open = document.getElementById("open");
+    if (!/^[A-Za-z0-9_-]{20,2000}$/.test(payload)) {
+      open.removeAttribute("href");
+      open.textContent = "연결 정보가 없어요";
+      open.setAttribute("aria-disabled", "true");
+      return;
+    }
+    open.href = "fmwp://pair/" + payload;
+    try {
+      const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+      const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))));
+      if (typeof json.n === "string" && json.n.trim()) {
+        document.getElementById("title").textContent = `${json.n.slice(0, 20)}님이 연결을 요청했어요`;
+      }
+      if (typeof json.exp === "number" && json.exp < Date.now()) {
+        document.getElementById("lede").textContent = "이 QR은 유효 시간(10분)이 지났어요. 상대 폰에서 새 QR을 띄워 달라고 해 주세요.";
+      }
+    } catch { /* malformed payload: keep the generic text; the app validates it anyway */ }
+  })();
+</script>
+</body>
+</html>

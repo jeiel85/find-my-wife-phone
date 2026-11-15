@@ -1,0 +1,14 @@
+{
+  "name": "find-my-wife-phone-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply find-my-wife-phone-relay --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.158.0"
+  }
+}

@@ -1,0 +1,19 @@
+name = "find-my-wife-phone-relay"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "find-my-wife-phone-relay"
+database_id = "e008ed4e-0c7b-400b-8132-d0230308f0e3"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["17 4 * * *"]
+
+[observability]
+enabled = true
+
+# Secret (never in this file): FCM_SERVICE_ACCOUNT — the Firebase service-account JSON.
+#   npx wrangler secret put FCM_SERVICE_ACCOUNT < service-account.json
