@@ -1,6 +1,10 @@
 package io.github.jeiel85.findmywifephone.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.jeiel85.findmywifephone.core.Hub
+import io.github.jeiel85.findmywifephone.data.ThemeMode
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -95,9 +99,20 @@ object P {
     val c: Palette @Composable get() = LocalPalette.current
 }
 
+/** The theme setting wins over the system's dark mode. */
+@Composable
+fun isAppDark(): Boolean {
+    val settings by Hub.store.settings.collectAsStateWithLifecycle()
+    return when (settings.theme) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+}
+
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
-    val p = if (isSystemInDarkTheme()) Dark else Light
+    val p = if (isAppDark()) Dark else Light
     val scheme = if (p.dark) {
         darkColorScheme(primary = p.coral, onPrimary = p.onCoral, secondary = p.sofa, background = p.wallTop,
             surface = p.surface, onSurface = p.ink, onBackground = p.ink, surfaceVariant = p.surfaceSoft,

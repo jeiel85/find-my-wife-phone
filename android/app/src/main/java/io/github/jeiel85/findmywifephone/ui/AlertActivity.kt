@@ -172,7 +172,8 @@ private fun Ringing(ui: RingUi) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Header("${ui.peerName}님이 찾는 중", "여기 있어요!", "찾았으면 아래 버튼을 눌러 주세요.\n소리와 방해 금지 설정은 원래대로 돌아가요.", light = false)
+            if (ui.test) Header("울림 테스트", "이렇게 울려요", "실제 요청도 같은 소리·진동·플래시로 울려요.\n끝나면 소리 설정은 원래대로 돌아가요.", light = false)
+            else Header("${ui.peerName}님이 찾는 중", "여기 있어요!", "찾았으면 아래 버튼을 눌러 주세요.\n소리와 방해 금지 설정은 원래대로 돌아가요.", light = false)
             Box(Modifier.size(180.dp).onGloballyPositioned { bell = it.boundsInRoot().center }
                 .clip(CircleShape).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(132.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {

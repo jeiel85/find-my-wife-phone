@@ -7,4 +7,7 @@ v0.1.0을 만들며 드러난 견고성·보안·운영 개선 후보입니다. 
 - [ ] 방해 금지 복원 실패를 사용자에게 알림 · 지금은 로그만 남김(Android 15+ 암시적 규칙) · `SoundState.restore`
 - [ ] OSM 타일 사용량 · 공개 배포 시 OSM 타일 정책 한도를 넘을 수 있음 → 자체 타일/상용 지도 키 검토 · `ui/Visuals.kt` MiniMap
 - [ ] 관측성: Worker 오류율·FCM 실패율 대시보드/알림 · 장애를 사용자가 먼저 알게 됨 · Cloudflare Workers Observability
+- [ ] 자동 업데이트 실패를 사용자에게 알림 · 지금은 설정 화면에서만 실패가 보여 몇 주째 구버전일 수 있음 · `update/Updater.kt`
+- [ ] 업데이트 확인 백오프 · GitHub API 403/429(비인증 시간당 60회) 때 다음 주기까지 그냥 실패 · `update/UpdateWorker.kt`
+- [ ] 두 폰 버전 차이 표시 · 한쪽만 업데이트되면 새 메시지 종류를 모르는 폰이 조용히 무시함 · `core/Messages.kt` `Hello.model`
 - [ ] 서비스 계정 키 교체 절차 문서화 · 키 유출 시 대응 시간 단축 · `design/FIREBASE_SETUP.md`
