@@ -179,6 +179,7 @@ class LocateService : Service() {
 
         private val _ui = MutableStateFlow<LocateUi?>(null)
         val ui: StateFlow<LocateUi?> = _ui.asStateFlow()
+        val isActive get() = _ui.value != null
         private var instance: LocateService? = null
 
         fun start(context: Context, peerId: String, peerName: String, reqId: String, ask: Boolean) {

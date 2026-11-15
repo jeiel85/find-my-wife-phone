@@ -70,8 +70,8 @@ object Notifier {
         .build()
 
     fun ringing(context: Context, ui: RingUi): Notification = alertBuilder(context)
-        .setContentTitle("여기 있어요! 🔔")
-        .setContentText("${ui.peerName}님의 요청으로 울리는 중이에요")
+        .setContentTitle(if (ui.test) "울림 테스트 🔔" else "여기 있어요! 🔔")
+        .setContentText(if (ui.test) "${RingService.TEST_SEC}초 동안 실제와 똑같이 울려요" else "${ui.peerName}님의 요청으로 울리는 중이에요")
         .setColor(0xFFFF6B5B.toInt())
         .setColorized(true)
         .addAction(0, "찾았어요", service(context, RingService.intent(context, RingService.ACTION_FOUND), 12))
@@ -122,4 +122,18 @@ object Notifier {
     fun blockedWhileSnoozed(context: Context, name: String, ring: Boolean) = info(
         context, ID_INFO_BASE + 4, "${name}님이 폰을 찾았어요",
         "요청 받지 않기 중이라 소리를 내지 않았어요.", MainActivity.SCREEN_HISTORY)
+
+    /** The system installer needs one tap; [confirm] is its own screen. */
+    fun updateReady(context: Context, version: String, confirm: Intent) = update(context, ID_INFO_BASE + 5,
+        NotificationCompat.Builder(context, CH_INFO)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("새 버전 $version 준비됐어요")
+            .setContentText("탭해서 설치하세요. 연결과 기록은 그대로 남아요.")
+            .setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(context, 5, confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+            .build())
+
+    fun updated(context: Context, version: String) =
+        info(context, ID_INFO_BASE + 5, "$version 버전으로 업데이트했어요", "설정 → 업데이트에서 바뀐 점을 볼 수 있어요.", MainActivity.SCREEN_SETTINGS)
 }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.PairOffer
+import io.github.jeiel85.findmywifephone.update.Updater
 
 class MainActivity : ComponentActivity() {
 
@@ -38,6 +40,16 @@ class MainActivity : ComponentActivity() {
         Hub.init(this)
         handle(intent)
         setContent { AppTheme { Root() } }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Updater.appVisible = true
+    }
+
+    override fun onStop() {
+        Updater.appVisible = false
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -57,6 +69,13 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun Root() {
         val settings by Hub.store.settings.collectAsStateWithLifecycle()
+        val dark = isAppDark()
+        // Status-bar icons must follow the in-app theme, not only the system's dark mode.
+        LaunchedEffect(dark) {
+            val t = android.graphics.Color.TRANSPARENT
+            val style = if (dark) SystemBarStyle.dark(t) else SystemBarStyle.light(t, t)
+            enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+        }
         Box(Modifier.fillMaxSize().background(P.c.wall).safeDrawingPadding()) {
             if (!settings.onboarded) {
                 OnboardingScreen(onDone = { })
@@ -71,7 +90,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { screen = SCREEN_HOME },
                     )
                     SCREEN_HISTORY -> HistoryScreen(onBack = { screen = SCREEN_HOME })
-                    SCREEN_SETTINGS -> SettingsScreen(onBack = { screen = SCREEN_HOME }, onPair = { screen = SCREEN_PAIR })
+                    SCREEN_SETTINGS -> SettingsScreen(onBack = { screen = SCREEN_HOME }, onPair = { screen = SCREEN_PAIR }, onHistory = { screen = SCREEN_HISTORY })
                     else -> HomeScreen(
                         onPair = { screen = SCREEN_PAIR },
                         onHistory = { screen = SCREEN_HISTORY },

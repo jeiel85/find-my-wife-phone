@@ -35,7 +35,23 @@ data class Settings(
     val snoozeUntil: Long = 0,
     val locationPolicy: LocationPolicy = LocationPolicy.AUTO,
     val onboarded: Boolean = false,
+    /** How long a ring lasts before it stops by itself. */
+    val ringSeconds: Int = 120,
+    val ringVibrate: Boolean = true,
+    /** Blink the camera flash while ringing — helps when the phone is under a cushion in the dark. */
+    val ringFlash: Boolean = true,
+    val theme: ThemeMode = ThemeMode.SYSTEM,
+    /** Release builds check GitHub Releases twice a day and install signed updates. */
+    val autoUpdate: Boolean = true,
 )
+
+enum class ThemeMode(val wire: String) {
+    SYSTEM("system"), LIGHT("light"), DARK("dark");
+    companion object { fun of(v: String?) = entries.firstOrNull { it.wire == v } ?: SYSTEM }
+}
+
+/** Allowed ring lengths; anything else read from disk falls back to the default. */
+val RING_LENGTHS = listOf(60, 120, 300)
 
 /** Everything the app persists. Secrets go through the Keystore; plain prefs hold the rest. */
 class Store(context: Context) {
@@ -98,6 +114,11 @@ class Store(context: Context) {
         snoozeUntil = prefs.getLong("snoozeUntil", 0),
         locationPolicy = LocationPolicy.of(prefs.getString("locPolicy", null)),
         onboarded = prefs.getBoolean("onboarded", false),
+        ringSeconds = prefs.getInt("ringSec", 120).takeIf { it in RING_LENGTHS } ?: 120,
+        ringVibrate = prefs.getBoolean("ringVibrate", true),
+        ringFlash = prefs.getBoolean("ringFlash", true),
+        theme = ThemeMode.of(prefs.getString("theme", null)),
+        autoUpdate = prefs.getBoolean("autoUpdate", true),
     )
 
     @Synchronized
@@ -108,6 +129,11 @@ class Store(context: Context) {
             .putLong("snoozeUntil", next.snoozeUntil)
             .putString("locPolicy", next.locationPolicy.wire)
             .putBoolean("onboarded", next.onboarded)
+            .putInt("ringSec", next.ringSeconds)
+            .putBoolean("ringVibrate", next.ringVibrate)
+            .putBoolean("ringFlash", next.ringFlash)
+            .putString("theme", next.theme.wire)
+            .putBoolean("autoUpdate", next.autoUpdate)
             .apply()
         _settings.value = next
         return next

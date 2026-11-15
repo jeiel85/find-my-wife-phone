@@ -181,6 +181,7 @@
         </div>
       </div>
       <p class="fine">받은 위치를 지도에 그릴 때는 그 주변 지도 조각을 OpenStreetMap 타일 서버에서 받아와요. 지도를 열지 않으면 요청하지 않아요.</p>
+      <p class="fine">자동 업데이트는 하루 두 번 GitHub 릴리스를 확인해요. 받은 APK는 체크섬과 서명 키가 지금 앱과 같을 때만 설치하고, 설정에서 끌 수 있어요.</p>
       <p class="fine">P-256 ECDH + HKDF + AES-256-GCM. 자세한 내용은 <a href="https://github.com/jeiel85/find-my-wife-phone/blob/main/design/PROTOCOL.md">프로토콜 문서</a>에 있어요.</p>
     </div>
   </section>
@@ -201,6 +202,7 @@
     <details><summary>iPhone도 되나요?</summary><p>아직은 Android만 돼요. iPhone은 무음을 뚫고 울리려면 Apple의 별도 승인이 필요해요.</p></details>
     <details><summary>같은 Wi-Fi에 있어야 하나요?</summary><p>아니요. 두 폰 모두 인터넷만 되면 어디서든 돼요. 반대로 인터넷이 끊기면 같은 집 안이어도 동작하지 않아요.</p></details>
     <details><summary>배터리를 많이 쓰나요?</summary><p>평소에는 아무것도 하지 않아요. 요청이 올 때만 Google 푸시(FCM)로 깨어나요. 확실히 받으려면 배터리 최적화에서 제외해 주세요.</p></details>
+    <details><summary>업데이트는 어떻게 하나요?</summary><p>앱이 하루 두 번 새 버전을 확인해서 설치해요. 처음 한 번만 ‘이 앱의 설치 허용’을 눌러 주면 되고, 설정 → 업데이트에서 바로 확인하거나 끌 수도 있어요.</p></details>
     <details><summary>몰래 위치를 볼 수 있나요?</summary><p>아니요. 위치를 보낼 때마다 상대 폰에 알림이 뜨고 기록에 남아요. 앱이나 알림을 숨기는 기능은 없어요.</p></details>
   </section>
 </main>
