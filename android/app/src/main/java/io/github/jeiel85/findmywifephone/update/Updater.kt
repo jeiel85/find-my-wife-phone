@@ -73,10 +73,11 @@ object Updater {
         if (!supported) return@withContext UpdateState.Idle
         lock.withLock {
             val release = check(context) ?: return@withLock _state.value
-            if (busy() || (!userInitiated && appVisible)) {
-                return@withLock UpdateState.Available(release).also { _state.value = it }
-            }
+            fun mustWait() = busy() || (!userInitiated && appVisible)
+            if (mustWait()) return@withLock UpdateState.Available(release).also { _state.value = it }
             val apk = download(context, release) ?: return@withLock _state.value
+            // The download can take a while; a ring may have started or the app come to the front.
+            if (mustWait()) return@withLock UpdateState.Available(release).also { _state.value = it }
             install(context, apk, release)
             _state.value
         }
