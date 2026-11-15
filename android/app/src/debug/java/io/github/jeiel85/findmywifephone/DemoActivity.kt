@@ -3,6 +3,10 @@ package io.github.jeiel85.findmywifephone
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import io.github.jeiel85.findmywifephone.nearby.Closeness
+import io.github.jeiel85.findmywifephone.nearby.NearbyReading
+import io.github.jeiel85.findmywifephone.nearby.Trend
+import io.github.jeiel85.findmywifephone.ui.NearbyDebug
 import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.LocateState
 import io.github.jeiel85.findmywifephone.core.Msg
@@ -40,6 +44,7 @@ class DemoActivity : Activity() {
         LocateService.debugPreview(null)
         Hub.debugShowOutgoing(PEER, null)
         Hub.debugHideRegistrationBanner()
+        NearbyDebug.reading = if (state == "nearby") NearbyReading(Closeness.CLOSE, 0.72f, Trend.WARMER, heard = true) else null
 
         if (state == "empty") {
             Hub.store.removePeer(PEER)
@@ -50,7 +55,7 @@ class DemoActivity : Activity() {
         fun ring(s: RingState?) = Hub.debugShowOutgoing(PEER, Outgoing(RequestKind.RING, "demo", now, sent = true, ring = s))
         when (state) {
             "countdown" -> ring(RingState.COUNTDOWN)
-            "ringing" -> ring(RingState.RINGING)
+            "ringing", "nearby" -> ring(RingState.RINGING)
             "found" -> ring(RingState.FOUND)
             "declined" -> ring(RingState.DECLINED)
             "located" -> Hub.debugShowOutgoing(PEER, Outgoing(RequestKind.LOCATE, "demo-l", now, sent = true, locate = LocateState.LOCATING,

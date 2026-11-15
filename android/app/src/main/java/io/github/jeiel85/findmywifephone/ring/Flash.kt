@@ -3,14 +3,16 @@ package io.github.jeiel85.findmywifephone.ring
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
-import android.os.Handler
 import android.util.Log
 
 /**
- * Blinks the camera flash while ringing. setTorchMode needs no camera permission; it simply
- * fails when another app holds the camera, and then we just don't blink.
+ * Keeps the camera flash on while ringing so light leaks out from under a cushion.
+ *
+ * It stays on instead of blinking: on Samsung phones every torch on/off re-posts the system's
+ * flashlight notification, which then kept jumping above ours and made "찾았어요" hard to tap.
+ * setTorchMode needs no camera permission; when another app holds the camera it just fails.
  */
-class Flash(context: Context, private val main: Handler) {
+class Flash(context: Context) {
     private val cameras = context.getSystemService(CameraManager::class.java)
     private val id: String? = runCatching {
         cameras?.cameraIdList?.firstOrNull {
@@ -18,37 +20,23 @@ class Flash(context: Context, private val main: Handler) {
         }
     }.getOrNull()
     private var on = false
-    private var running = false
-
-    private val tick = object : Runnable {
-        override fun run() {
-            if (!running) return
-            set(!on)
-            main.postDelayed(this, BLINK_MS)
-        }
-    }
 
     fun start() {
-        if (id == null || running) return
-        running = true
-        main.post(tick)
+        val cam = id ?: return
+        if (on) return
+        runCatching { cameras?.setTorchMode(cam, true) }
+            .onSuccess { on = true }
+            .onFailure { Log.w(TAG, "torch unavailable", it) }
     }
 
     fun stop() {
-        running = false
-        main.removeCallbacks(tick)
-        if (on) set(false)
-    }
-
-    private fun set(value: Boolean) {
         val cam = id ?: return
-        runCatching { cameras?.setTorchMode(cam, value) }
-            .onSuccess { on = value }
-            .onFailure { Log.w(TAG, "torch unavailable", it); running = false }
+        if (!on) return
+        runCatching { cameras?.setTorchMode(cam, false) }
+        on = false
     }
 
     private companion object {
         const val TAG = "Flash"
-        const val BLINK_MS = 450L
     }
 }

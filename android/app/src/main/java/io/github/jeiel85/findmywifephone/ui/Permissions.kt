@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryAlert
+import androidx.compose.material.icons.rounded.BluetoothSearching
 import androidx.compose.material.icons.rounded.DoNotDisturbOff
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.MyLocation
@@ -36,6 +37,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import io.github.jeiel85.findmywifephone.core.LocationPolicy
+import io.github.jeiel85.findmywifephone.nearby.NearbyPermissions
 
 data class Check(
     val key: String,
@@ -60,6 +62,8 @@ object Checks {
                 Build.VERSION.SDK_INT < 34 || nm.canUseFullScreenIntent(), true),
             Check("dnd", "방해 금지 모드에서도 울리기", "방해 금지 중에도 소리를 내고, 끝나면 원래대로 돌려놔요", Icons.Rounded.DoNotDisturbOff,
                 nm.isNotificationPolicyAccessGranted, true),
+            Check("nearby", "근처 기기 (블루투스)", "울릴 때 서로 얼마나 가까운지 보여 줘요 (권장)", Icons.Rounded.BluetoothSearching,
+                Build.VERSION.SDK_INT < 31 || NearbyPermissions.granted(context), false),
             Check("battery", "배터리 최적화 제외", "절전 중에도 요청을 놓치지 않게 해요 (권장)", Icons.Rounded.BatteryAlert,
                 pm.isIgnoringBatteryOptimizations(context.packageName), false),
         )
@@ -95,6 +99,7 @@ fun PermissionList(policy: LocationPolicy) {
     val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
     val location = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
     val bgLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
+    val nearby = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
     val checks = remember(tick, refresh, policy) { Checks.all(context, policy) }
 
     fun open(intent: Intent) {
@@ -117,6 +122,7 @@ fun PermissionList(policy: LocationPolicy) {
                             "notify" -> if (Build.VERSION.SDK_INT >= 33) notify.launch(Manifest.permission.POST_NOTIFICATIONS)
                             "fullscreen" -> if (Build.VERSION.SDK_INT >= 34) open(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
                                 Uri.parse("package:${context.packageName}")))
+                            "nearby" -> nearby.launch(NearbyPermissions.required)
                             "dnd" -> open(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
                             "battery" -> open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                                 Uri.parse("package:${context.packageName}")))
