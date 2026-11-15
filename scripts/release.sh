@@ -25,7 +25,7 @@ SHA=$(sha256sum dist/find-my-wife-phone.apk | cut -d' ' -f1)
 NOTES=$(mktemp)
 awk -v v="## $TAG" 'index($0, v)==1 {on=1; next} /^## v/ {on=0} on' CHANGELOG.md > "$NOTES"
 printf '\n---\n**APK SHA-256** `%s`\n\n두 폰 모두 설치한 뒤 앱에서 QR로 연결하세요. 자세한 안내는 https://jeiel85.github.io/find-my-wife-phone/ 에 있어요.\n' "$SHA" >> "$NOTES"
-gh release create "$TAG" dist/find-my-wife-phone.apk --title "폰 찾기 $TAG" --notes-file "$NOTES" --target main
+gh release create "$TAG" dist/find-my-wife-phone.apk --title "포너디 $TAG" --notes-file "$NOTES" --target main
 rm -f "$NOTES"
 echo "✓ released $TAG (sha256 $SHA)"
 

@@ -7,5 +7,5 @@
 - [ ] 오래 쓰지 않은 기기 정리(중계 D1의 devices·links) · 재설치하면 이전 기기 행이 남음 · cron
 - [ ] 울림 소리 선택(기본 알림음 외) · 취향 · RingService
 - [ ] 영어 UI · 외부 공개 시 · strings 리소스로 문구 이동
-- [ ] 업데이트 후 바뀐 점 보기 · 업데이트 완료 알림이 '설정에서 바뀐 점을 볼 수 있다'고 하지만 설치 뒤엔 노트를 보여 주지 않음 · `Notifier.updated`, `SettingsScreen` 업데이트 섹션
+- [ ] 업데이트 후 바뀐 점 보기 · 설치 뒤에는 릴리스 노트를 다시 볼 곳이 없음 · `SettingsScreen` 업데이트 섹션
 - [ ] 매일 받지 않는 시간(취침 시간 반복) · 지금은 한 번씩만 설정 가능 · `Settings`, `Hub.onRingRequest`
