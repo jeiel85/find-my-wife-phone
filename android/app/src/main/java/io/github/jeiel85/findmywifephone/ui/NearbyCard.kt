@@ -44,6 +44,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jeiel85.findmywifephone.BuildConfig
 import io.github.jeiel85.findmywifephone.data.Peer
@@ -101,9 +104,22 @@ object NearbyDebug { var reading: NearbyReading? = null }
 private fun Live(peer: Peer) {
     val context = LocalContext.current
     val scanner = remember(peer.id) { NearbyScanner(context.applicationContext, peer.pairKey) }
-    DisposableEffect(scanner) {
-        scanner.start()
-        onDispose { scanner.stop() }
+    // Scan only while the gauge is actually visible: Home or screen-off keeps the composition
+    // alive, so disposal alone would leave Bluetooth scanning in the background (D-8).
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(scanner, owner) {
+        val observer = LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_START -> scanner.start()
+                Lifecycle.Event.ON_STOP -> scanner.stop()
+                else -> Unit
+            }
+        }
+        owner.lifecycle.addObserver(observer) // replays ON_START when already visible
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            scanner.stop()
+        }
     }
     val r by scanner.reading.collectAsStateWithLifecycle()
     Gauge(r)
