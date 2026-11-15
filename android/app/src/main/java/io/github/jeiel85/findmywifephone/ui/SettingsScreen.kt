@@ -131,7 +131,7 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
             ToggleRow("진동도 함께", "소리와 같이 진동해요", Icons.Rounded.Vibration, P.c.indigo, settings.ringVibrate) { on ->
                 Hub.store.updateSettings { it.copy(ringVibrate = on) }
             }
-            ToggleRow("플래시 깜빡이기", "어두운 곳이나 쿠션 밑에서도 빛으로 보여요", Icons.Rounded.FlashlightOn, P.c.amber, settings.ringFlash) { on ->
+            ToggleRow("플래시 켜기", "울리는 동안 플래시를 켜 둬요. 쿠션 밑에서도 빛이 새어 나와요", Icons.Rounded.FlashlightOn, P.c.amber, settings.ringFlash) { on ->
                 Hub.store.updateSettings { it.copy(ringFlash = on) }
             }
             val ringing by RingService.ui.collectAsStateWithLifecycle()

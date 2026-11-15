@@ -237,6 +237,9 @@ private fun PeerPanel(peer: Peer, out: Outgoing?, onHistory: () -> Unit) {
     AnimatedVisibility(out != null, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
         out?.let { RequestCard(peer, it) }
     }
+    AnimatedVisibility(ringing, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+        NearbyCard(peer)
+    }
     out?.result?.takeIf { out.kind == RequestKind.LOCATE }?.let { LocationCard(peer.name, it) }
 
     Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {

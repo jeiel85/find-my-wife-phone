@@ -23,6 +23,8 @@ data class PeerStatus(
     val locationPolicy: LocationPolicy = LocationPolicy.AUTO,
     val battery: Int = -1,
     val charging: Boolean = false,
+    /** While ringing: true = broadcasting the nearby beacon, false = cannot (Bluetooth off/denied), null = n/a. */
+    val beacon: Boolean? = null,
 ) {
     fun snoozed(now: Long) = snoozeUntil > now
 
@@ -31,6 +33,7 @@ data class PeerStatus(
         .put("loc", locationPolicy.wire)
         .put("battery", battery)
         .put("charging", charging)
+        .apply { beacon?.let { put("beacon", it) } }
 
     companion object {
         const val FOREVER = Long.MAX_VALUE
@@ -41,6 +44,7 @@ data class PeerStatus(
                 locationPolicy = LocationPolicy.of(it.optString("loc")),
                 battery = it.optInt("battery", -1).coerceIn(-1, 100),
                 charging = it.optBoolean("charging", false),
+                beacon = if (it.has("beacon")) it.optBoolean("beacon") else null,
             )
         }
     }

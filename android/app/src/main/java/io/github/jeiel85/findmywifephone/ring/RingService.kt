@@ -20,6 +20,7 @@ import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.Msg
 import io.github.jeiel85.findmywifephone.core.RingState
 import io.github.jeiel85.findmywifephone.data.Direction
+import io.github.jeiel85.findmywifephone.nearby.BeaconAdvertiser
 import io.github.jeiel85.findmywifephone.ui.Notifier
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +42,7 @@ class RingService : Service() {
     private var maxVolume = 0
     private var ticks = 0
     private var flash: Flash? = null
+    private var beacon: BeaconAdvertiser? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -146,7 +148,11 @@ class RingService : Service() {
             Log.e(TAG, "playback failed", e)
         }
         if (settings.ringVibrate) vibrate()
-        if (settings.ringFlash) flash = Flash(this, main).also { it.start() }
+        if (settings.ringFlash) flash = Flash(this).also { it.start() }
+        if (!ui.test) {
+            // Lets the requester's phone show how close this one is (nearby gauge).
+            beaconState = Hub.store.peer(peerId)?.let { p -> BeaconAdvertiser(this, p.pairKey).also { beacon = it }.start() } ?: false
+        }
         Notifier.update(this, Notifier.ID_RING, Notifier.ringing(this, _ui.value!!))
         if (!ui.test) {
             Hub.reply(peerId, Msg.RingUpdate(ui.reqId, RingState.RINGING, Hub.myStatus()))
@@ -186,6 +192,9 @@ class RingService : Service() {
         getSystemService(VibratorManager::class.java)?.defaultVibrator?.cancel()
         flash?.stop()
         flash = null
+        beacon?.stop()
+        beacon = null
+        beaconState = null
         SoundState.restore(this)
         _ui.value = null
         if (!ui.test) {
@@ -219,6 +228,10 @@ class RingService : Service() {
         val ui: StateFlow<RingUi?> = _ui.asStateFlow()
         private var instance: RingService? = null
         val isActive get() = _ui.value != null
+
+        /** Reported in [io.github.jeiel85.findmywifephone.core.PeerStatus.beacon] while ringing. */
+        @Volatile var beaconState: Boolean? = null
+            private set
 
         fun start(context: Context, peerId: String, peerName: String, reqId: String) {
             val intent = Intent(context, RingService::class.java).setAction(ACTION_START)

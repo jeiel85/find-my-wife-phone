@@ -38,7 +38,7 @@ data class Settings(
     /** How long a ring lasts before it stops by itself. */
     val ringSeconds: Int = 120,
     val ringVibrate: Boolean = true,
-    /** Blink the camera flash while ringing — helps when the phone is under a cushion in the dark. */
+    /** Camera flash on while ringing — helps when the phone is under a cushion in the dark. */
     val ringFlash: Boolean = true,
     val theme: ThemeMode = ThemeMode.SYSTEM,
     /** Release builds check GitHub Releases twice a day and install signed updates. */

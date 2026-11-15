@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.PairOffer
+import io.github.jeiel85.findmywifephone.locate.LocateService
+import io.github.jeiel85.findmywifephone.ring.RingService
 import io.github.jeiel85.findmywifephone.update.Updater
 
 class MainActivity : ComponentActivity() {
@@ -75,6 +77,14 @@ class MainActivity : ComponentActivity() {
             val t = android.graphics.Color.TRANSPARENT
             val style = if (dark) SystemBarStyle.dark(t) else SystemBarStyle.light(t, t)
             enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+        }
+        // While this app is on screen Android shows the incoming request only as a heads-up
+        // notification. Open the full alert (countdown / 찾았어요) ourselves, once per request.
+        val ring by RingService.ui.collectAsStateWithLifecycle()
+        val locate by LocateService.ui.collectAsStateWithLifecycle()
+        val incoming = ring?.reqId ?: locate?.reqId
+        LaunchedEffect(incoming) {
+            if (incoming != null) startActivity(Intent(this@MainActivity, AlertActivity::class.java))
         }
         Box(Modifier.fillMaxSize().background(P.c.wall).safeDrawingPadding()) {
             if (!settings.onboarded) {

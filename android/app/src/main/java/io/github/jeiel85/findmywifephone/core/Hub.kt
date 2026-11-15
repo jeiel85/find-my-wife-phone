@@ -169,6 +169,7 @@ object Hub {
             locationPolicy = s.locationPolicy,
             battery = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 } ?: -1,
             charging = bm?.isCharging == true,
+            beacon = RingService.beaconState,
         )
     }
 
