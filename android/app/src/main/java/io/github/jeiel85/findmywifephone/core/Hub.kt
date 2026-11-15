@@ -23,6 +23,7 @@ import io.github.jeiel85.findmywifephone.ring.RingService
 import io.github.jeiel85.findmywifephone.ui.Notifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -112,7 +113,10 @@ object Hub {
 
     // ---- registration --------------------------------------------------------------------
 
-    suspend fun ensureRegistered(): Identity? = registerLock.withLock {
+    /** Main-safe: the relay client is blocking, so all three suspend entry points hop to IO. */
+    suspend fun ensureRegistered(): Identity? = withContext(Dispatchers.IO) { registerLocked() }
+
+    private suspend fun registerLocked(): Identity? = registerLock.withLock {
         if (!BuildConfig.HAS_FIREBASE) return null
         _registration.value = Registration.Working
         val fcm = try {
@@ -181,7 +185,9 @@ object Hub {
 
     // ---- pairing -------------------------------------------------------------------------
 
-    suspend fun createOffer(): Result<PairOffer> {
+    suspend fun createOffer(): Result<PairOffer> = withContext(Dispatchers.IO) { createOfferIo() }
+
+    private suspend fun createOfferIo(): Result<PairOffer> {
         val me = ensureRegistered() ?: return Result.failure(IllegalStateException(registrationCode()))
         val secret = Crypto.randomBytes(16)
         val expiresAt = System.currentTimeMillis() + INVITE_TTL_SEC * 1000L
@@ -197,7 +203,9 @@ object Hub {
     private fun registrationCode() = (registration.value as? Registration.Failed)?.code ?: "not_registered"
 
     /** We scanned someone's QR. */
-    suspend fun join(offer: PairOffer): Result<Peer> {
+    suspend fun join(offer: PairOffer): Result<Peer> = withContext(Dispatchers.IO) { joinIo(offer) }
+
+    private suspend fun joinIo(offer: PairOffer): Result<Peer> {
         if (offer.expiresAt < System.currentTimeMillis()) return Result.failure(IllegalStateException("invite_expired"))
         val me = ensureRegistered() ?: return Result.failure(IllegalStateException(registrationCode()))
         if (offer.deviceId == me.deviceId) return Result.failure(IllegalStateException("self_pairing"))
@@ -311,7 +319,7 @@ object Hub {
     /** Entry point for every FCM data message. Runs on the FCM worker thread. */
     fun onPush(data: Map<String, String>) {
         val me = store.identity() ?: return
-        val from = data["from"] ?: return
+        val from = data["src"] ?: return
         val env = data["env"] ?: return
         when (data["k"]) {
             "pair" -> onPairPush(me, from, data["pub"] ?: return, env)

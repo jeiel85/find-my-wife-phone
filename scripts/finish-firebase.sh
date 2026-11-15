@@ -22,7 +22,7 @@ SA="${2:-$(ls -t "$DL"/*firebase-adminsdk*.json 2>/dev/null | head -1 || true)}"
 echo "• google-services: $GS"
 echo "• service account: $(basename "$SA")"
 
-python - "$GS" "$SA" "$PKG" <<'EOF'
+PYTHONIOENCODING=utf-8 python - "$GS" "$SA" "$PKG" <<'EOF'
 import json, sys
 gs = json.load(open(sys.argv[1], encoding="utf-8"))
 sa = json.load(open(sys.argv[2], encoding="utf-8"))

@@ -57,7 +57,12 @@ async function accessToken(sa, fetchFn, now) {
  * Sends a data-only, high-priority message.
  * @returns {"ok" | "unregistered" | "error"} — "unregistered" means the token is dead for good.
  */
+// FCM rejects the whole message (400 INVALID_ARGUMENT) when a data key is one of these.
+const RESERVED = /^(from|notification|message_type|collapse_key)$|^(google|gcm)\./;
+
 export async function sendData(sa, fcmToken, data, ttlSec, fetchFn = fetch, now = Date.now()) {
+  const bad = Object.keys(data).find((k) => RESERVED.test(k));
+  if (bad) throw new Error(`FCM data key "${bad}" is reserved`);
   const token = await accessToken(sa, fetchFn, now);
   const res = await fetchFn(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
     method: "POST",

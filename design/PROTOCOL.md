@@ -10,7 +10,7 @@
    │  POST /v1/messages {to, env}  │                            │                     │
    │ ─────────────────────────────▶│ 링크(남편→아내) 확인          │                     │
    │                               │ 속도 제한                   │                     │
-   │                               │ ─ data {k:msg, from, env} ─▶│ ── high priority ──▶│
+   │                               │ ─ data {k:msg, src, env}  ─▶│ ── high priority ──▶│
    │                               │                            │                     │ 복호화 → 10초 카운트다운
    │                               │◀──────────── POST /v1/messages (ring-state…) ─────│ → 울림 / 거절 / 받지 않기
    │◀─────────────── FCM ──────────│                            │                     │
@@ -37,7 +37,7 @@
 
 - `deviceId`: 22자 base64url(16바이트 난수). `inviteId`: 43자 base64url = SHA-256(pairSecret).
 - `pub`: P-256 비압축 점 65바이트의 base64url(87자). `env`: 아래 봉투, 3000자 이하.
-- FCM 데이터: 페어링 `{k: "pair", from, pub, env}`, 메시지 `{k: "msg", from, env}`. Android `priority: HIGH`, `ttl`은 요청값.
+- FCM 데이터: 페어링 `{k: "pair", src, pub, env}`, 메시지 `{k: "msg", src, env}` (`src` = 보낸 기기 ID. `from`·`notification`·`message_type`·`google.*`·`gcm.*`는 FCM 예약어라 쓸 수 없음). Android `priority: HIGH`, `ttl`은 요청값.
   FCM이 `UNREGISTERED`/404를 주면 그 기기의 FCM 토큰을 지우고 410 `peer_unreachable`을 돌려줍니다(앱이 다음 실행 때 다시 등록).
 - 매일 04:17 UTC cron이 만료된 초대와 하루 지난 속도 제한 카운터를 지웁니다.
 

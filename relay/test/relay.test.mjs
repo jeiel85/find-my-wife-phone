@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { generateKeyPairSync } from "node:crypto";
 import { handle, cleanup } from "../src/index.js";
-import { _resetFcmCacheForTests } from "../src/fcm.js";
+import { _resetFcmCacheForTests, sendData, parseServiceAccount } from "../src/fcm.js";
 
 class Stmt {
   constructor(db, sql) { this.db = db; this.sql = sql; this.args = []; }
@@ -113,7 +113,7 @@ test("invalid inputs are 400", async () => {
 test("pairing wakes the inviter and links both ways", async () => {
   const { a, b } = await pair();
   assert.equal(sent.length, 1);
-  assert.deepEqual(sent[0].data, { k: "pair", from: b.deviceId, pub: PUB, env: ENV });
+  assert.deepEqual(sent[0].data, { k: "pair", src: b.deviceId, pub: PUB, env: ENV });
   assert.equal(sent[0].token, FCM + "a");
   assert.equal(sent[0].android.priority, "HIGH");
   // invite is single-use
@@ -122,7 +122,7 @@ test("pairing wakes the inviter and links both ways", async () => {
   // both directions may now send
   assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 202);
   assert.equal((await call("POST", "/v1/messages", { token: b.token, body: { to: a.deviceId, env: ENV, ttlSec: 5 } })).status, 202);
-  assert.deepEqual(sent.at(-1).data, { k: "msg", from: b.deviceId, env: ENV });
+  assert.deepEqual(sent.at(-1).data, { k: "msg", src: b.deviceId, env: ENV });
   assert.equal(sent.at(-1).android.ttl, "10s"); // clamped
 });
 
@@ -215,4 +215,13 @@ test("cleanup drops expired invites and old counters", async () => {
   await cleanup(env, clock + 2 * 86_400_000);
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS c FROM invites").get().c, 0);
   assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS c FROM rate").get().c, 0);
+});
+
+test("FCM-reserved data keys are refused before sending", async () => {
+  let called = false;
+  const fetchFn = async () => { called = true; return new Response("{}"); };
+  for (const key of ["from", "notification", "message_type", "collapse_key", "google.x", "gcm.n"]) {
+    await assert.rejects(sendData(parseServiceAccount(SA), "tok", { [key]: "v" }, 60, fetchFn), /reserved/);
+  }
+  assert.equal(called, false);
 });

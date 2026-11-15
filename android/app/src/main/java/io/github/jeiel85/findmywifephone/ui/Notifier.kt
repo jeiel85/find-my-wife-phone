@@ -20,6 +20,7 @@ object Notifier {
     const val ID_RING = 1001
     const val ID_LOCATE = 1002
     private const val ID_INFO_BASE = 2000
+    private const val GROUP_ALERT = "fmwp.alert"
 
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -56,6 +57,9 @@ object Notifier {
         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
+        // Own group: otherwise Android bundles it with our other notifications ("연결됐어요" etc.),
+        // and SystemUI then treats the bundled child as silent and drops the full-screen intent.
+        .setGroup(GROUP_ALERT)
         .setContentIntent(alertScreen(context))
         .setFullScreenIntent(alertScreen(context), true)
 

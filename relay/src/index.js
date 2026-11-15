@@ -189,7 +189,7 @@ async function route(req, env, deps) {
       db.prepare("INSERT OR IGNORE INTO links (a, b, created_at) VALUES (?1, ?2, ?3)").bind(inv.owner, me.id, now),
     ]);
     try {
-      await wake(env, deps, db, inv.owner, { k: "pair", from: me.id, pub, env: envelope }, 600);
+      await wake(env, deps, db, inv.owner, { k: "pair", src: me.id, pub, env: envelope }, 600);
     } catch (e) {
       // Inviter unreachable: undo new links and keep the invite so the scan can be retried.
       if (!existed) {
@@ -209,7 +209,7 @@ async function route(req, env, deps) {
     const link = await db.prepare("SELECT 1 AS ok FROM links WHERE a = ?1 AND b = ?2").bind(me.id, to).first();
     if (!link) throw new HttpError(403, "not_paired");
     await hit(db, `msg:${me.id}:${to}`, LIMITS.message, now);
-    await wake(env, deps, db, to, { k: "msg", from: me.id, env: envelope }, ttl);
+    await wake(env, deps, db, to, { k: "msg", src: me.id, env: envelope }, ttl);
     return json(202, { schema: 1, accepted: true });
   }
 
