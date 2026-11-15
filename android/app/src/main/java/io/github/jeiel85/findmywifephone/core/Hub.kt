@@ -288,6 +288,17 @@ object Hub {
 
     fun dismissOutgoing(peerId: String) = _outgoing.update { it - peerId }
 
+    /** Debug builds only (src/debug DemoActivity): puts the home screen into a given state for review. */
+    fun debugShowOutgoing(peerId: String, o: Outgoing?) {
+        if (!BuildConfig.DEBUG) return
+        _outgoing.update { if (o == null) it - peerId else it + (peerId to o) }
+    }
+
+    /** Debug builds only: hides the "no push config" banner while taking design screenshots. */
+    fun debugHideRegistrationBanner() {
+        if (BuildConfig.DEBUG) _registration.value = Registration.Ready
+    }
+
     private fun updateOutgoing(peerId: String, reqId: String, change: (Outgoing) -> Outgoing) {
         _outgoing.update { map ->
             val cur = map[peerId]

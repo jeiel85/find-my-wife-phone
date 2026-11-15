@@ -26,3 +26,6 @@ design/icon/codex.log
 
 # Kotlin daemon
 android/.kotlin/
+
+# Build output
+dist/

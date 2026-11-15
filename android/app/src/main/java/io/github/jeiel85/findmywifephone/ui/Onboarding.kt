@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,10 +51,8 @@ fun OnboardingScreen(onDone: () -> Unit) {
             }
         }
         if (step == 0) {
-            Box(Modifier.size(72.dp).clip(CircleShape).background(P.c.coral.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.NotificationsActive, null, tint = P.c.coral, modifier = Modifier.size(36.dp))
-            }
-            Spacer(Modifier.height(24.dp))
+            SofaScene(Modifier.fillMaxWidth().aspectRatio(560f / 380f))
+            Spacer(Modifier.height(12.dp))
             Text("폰이 안 보일 때,\n버튼 하나로 울려요", style = MaterialTheme.typography.displaySmall, color = P.c.ink)
             Spacer(Modifier.height(12.dp))
             Text("무음이나 방해 금지 모드여도 울리고, 찾으면 원래 설정으로 돌아가요. 울리기 전 10초 동안은 언제든 거절할 수 있어요.",

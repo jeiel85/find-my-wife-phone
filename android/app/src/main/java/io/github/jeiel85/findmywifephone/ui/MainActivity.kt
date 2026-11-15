@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun Root() {
         val settings by Hub.store.settings.collectAsStateWithLifecycle()
-        Box(Modifier.fillMaxSize().background(P.c.background).safeDrawingPadding()) {
+        Box(Modifier.fillMaxSize().background(P.c.wall).safeDrawingPadding()) {
             if (!settings.onboarded) {
                 OnboardingScreen(onDone = { })
                 return@Box

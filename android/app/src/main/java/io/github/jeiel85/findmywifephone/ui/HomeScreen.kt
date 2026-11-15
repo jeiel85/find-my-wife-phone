@@ -4,14 +4,19 @@ import android.content.Intent
 import android.location.Geocoder
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,18 +25,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.rounded.Battery5Bar
 import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.BatteryStd
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Directions
 import androidx.compose.material.icons.rounded.LocationOn
-import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
@@ -48,12 +55,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -80,21 +84,14 @@ fun HomeScreen(onPair: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var snoozeSheet by remember { mutableStateOf(false) }
     val peer = peers.firstOrNull { it.id == selected } ?: peers.firstOrNull()
+    val now = System.currentTimeMillis()
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("폰 찾기", style = MaterialTheme.typography.headlineMedium, color = P.c.ink)
-            }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            MyStatusPill(settings.snoozeUntil, now) { snoozeSheet = true }
+            Spacer(Modifier.weight(1f))
             IconButton(onClick = onHistory) { Icon(Icons.Outlined.History, "기록", tint = P.c.ink) }
             IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "설정", tint = P.c.ink) }
-        }
-        val now = System.currentTimeMillis()
-        Spacer(Modifier.height(4.dp))
-        if (settings.snoozeUntil > now) {
-            Chip("요청 받지 않는 중 · ${snoozeLabel(settings.snoozeUntil)}", P.c.amber, Icons.Rounded.Bedtime) { snoozeSheet = true }
-        } else {
-            Chip("내 폰: 요청 받는 중", P.c.sage, Icons.Rounded.CheckCircle) { snoozeSheet = true }
         }
 
         RegistrationBanner(registration)
@@ -103,130 +100,208 @@ fun HomeScreen(onPair: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit
             EmptyState(onPair)
         } else {
             if (peers.size > 1) {
-                Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    peers.forEach { p ->
-                        Chip(p.name, if (p.id == peer.id) P.c.coral else P.c.inkSoft) { selected = p.id }
-                    }
+                Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    peers.forEach { p -> Chip(p.name, if (p.id == peer.id) P.c.coral else P.c.inkSoft) { selected = p.id } }
                 }
             }
-            PeerPanel(peer, outgoing[peer.id])
+            PeerPanel(peer, outgoing[peer.id], onHistory)
         }
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(36.dp))
     }
     if (snoozeSheet) SnoozeSheet(onDismiss = { snoozeSheet = false })
 }
 
 @Composable
+private fun MyStatusPill(snoozeUntil: Long, now: Long, onClick: () -> Unit) {
+    val snoozed = snoozeUntil > now
+    val color = if (snoozed) P.c.amber else P.c.sage
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(P.c.surface).border(1.dp, P.c.hairline, RoundedCornerShape(50))
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (snoozed) Icon(Icons.Rounded.Bedtime, null, tint = color, modifier = Modifier.size(16.dp)) else StatusDot(color, live = true)
+        Spacer(Modifier.width(8.dp))
+        Text(if (snoozed) "받지 않는 중 · ${snoozeLabel(snoozeUntil)}" else "내 폰은 요청 받는 중",
+            fontSize = 13.sp, fontWeight = FontWeight.Bold, color = P.c.ink)
+    }
+}
+
+@Composable
 private fun RegistrationBanner(r: Registration) {
     val text = when (r) {
-        Registration.NotConfigured -> "이 빌드에는 푸시 설정(google-services.json)이 없어 다른 폰과 연결할 수 없어요."
-        is Registration.Failed -> "중계 서버에 연결하지 못했어요 (${errorText(r.code)}). 인터넷 연결을 확인해 주세요."
+        Registration.NotConfigured -> "이 빌드에는 푸시 설정이 없어 다른 폰과 연결할 수 없어요."
+        is Registration.Failed -> "중계 서버에 연결하지 못했어요 · ${errorText(r.code)}"
         else -> return
     }
-    Card(Modifier.fillMaxWidth().padding(top = 16.dp), padding = 16.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Rounded.WarningAmber, null, tint = P.c.danger)
-            Spacer(Modifier.width(10.dp))
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = P.c.ink, modifier = Modifier.weight(1f))
-            if (r is Registration.Failed) {
-                Text("다시 시도", color = P.c.coral, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { Hub.onNewFcmToken() }.padding(8.dp))
-            }
+    Row(
+        Modifier.fillMaxWidth().padding(top = 14.dp).clip(RoundedCornerShape(18.dp))
+            .background(P.c.danger.copy(alpha = 0.1f)).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.WarningAmber, null, tint = P.c.danger)
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = P.c.ink, modifier = Modifier.weight(1f))
+        if (r is Registration.Failed) {
+            Text("다시 시도", color = P.c.coralDeep, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { Hub.onNewFcmToken() }.padding(8.dp))
         }
     }
 }
 
 @Composable
 private fun EmptyState(onPair: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(220.dp), contentAlignment = Alignment.Center) {
-            Pulse(P.c.coral, active = true, modifier = Modifier.fillMaxSize())
-            Box(Modifier.size(112.dp).clip(CircleShape).background(P.c.coral.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.NotificationsActive, null, tint = P.c.coral, modifier = Modifier.size(48.dp))
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Text("가족 폰과 연결해 보세요", style = MaterialTheme.typography.headlineSmall, color = P.c.ink)
+    Column(Modifier.fillMaxWidth().padding(top = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        SofaScene(Modifier.fillMaxWidth().aspectRatio(560f / 380f))
         Spacer(Modifier.height(8.dp))
-        Text("한쪽 폰에서 QR을 띄우고 다른 폰으로 스캔하면 끝이에요.\n집 안이든 밖이든, 인터넷만 되면 서로 찾을 수 있어요.",
+        Text("“여보, 내 폰 어디 있어?”", color = P.c.sofa, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Spacer(Modifier.height(10.dp))
+        Text("가족 폰과 연결해 두면\n버튼 한 번으로 울릴 수 있어요", style = MaterialTheme.typography.headlineMedium,
+            color = P.c.ink, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(12.dp))
+        Text("한쪽 폰에서 QR을 띄우고 다른 폰으로 스캔하면 끝이에요.\n집 안이든 밖이든, 인터넷만 되면 돼요.",
             style = MaterialTheme.typography.bodyMedium, color = P.c.inkSoft, textAlign = TextAlign.Center)
         Spacer(Modifier.height(28.dp))
-        PillButton("연결하기", Icons.Rounded.QrCodeScanner, P.c.coral, P.c.onCoral, onClick = onPair)
+        PillButton("가족 폰 연결하기", Icons.Rounded.QrCodeScanner, P.c.coral, P.c.onCoral, Modifier.fillMaxWidth(), onClick = onPair)
     }
 }
 
 @Composable
-private fun PeerPanel(peer: Peer, out: Outgoing?) {
+private fun PeerAvatar(name: String, online: Boolean) {
+    Box(contentAlignment = Alignment.BottomEnd) {
+        Box(
+            Modifier.size(64.dp).clip(CircleShape)
+                .background(Brush.linearGradient(listOf(P.c.coral.lighten(0.15f), P.c.coralDeep))),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(name.trim().take(1).ifEmpty { "?" }, color = Color.White, fontWeight = FontWeight.Black, fontSize = 26.sp)
+        }
+        Box(Modifier.size(18.dp).clip(CircleShape).background(P.c.wallTop).padding(3.dp)) {
+            Box(Modifier.fillMaxSize().clip(CircleShape).background(if (online) P.c.sage else P.c.inkSoft.copy(alpha = 0.5f)))
+        }
+    }
+}
+
+@Composable
+private fun PeerPanel(peer: Peer, out: Outgoing?, onHistory: () -> Unit) {
     val now = System.currentTimeMillis()
     val st = peer.status
     val snoozed = st?.snoozed(now) == true
+    val recent = peer.seenAt > 0 && now - peer.seenAt < 15 * 60_000
 
-    Card(Modifier.fillMaxWidth().padding(top = 16.dp), padding = 18.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Avatar(peer.name, P.c.coral, 52.dp)
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(peer.name, style = MaterialTheme.typography.titleLarge, color = P.c.ink)
-                Text(listOfNotNull(peer.model.takeIf { it.isNotBlank() }, "마지막 응답 ${relativeTime(peer.seenAt)}").joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium, color = P.c.inkSoft)
-            }
-            if (st != null && st.battery >= 0) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (st.charging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.Battery5Bar, "배터리",
-                        tint = if (st.battery <= 15 && !st.charging) P.c.danger else P.c.inkSoft, modifier = Modifier.size(18.dp))
-                    Text("${st.battery}%", color = P.c.inkSoft, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    Row(Modifier.fillMaxWidth().padding(top = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+        PeerAvatar(peer.name, recent)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(peer.name, style = MaterialTheme.typography.headlineLarge, color = P.c.ink, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("응답 ${relativeTime(peer.seenAt)}", fontSize = 13.sp, color = P.c.inkSoft)
+                if (st != null && st.battery >= 0) {
+                    Text("  ·  ", fontSize = 13.sp, color = P.c.inkSoft)
+                    Icon(if (st.charging) Icons.Rounded.BatteryChargingFull else Icons.Rounded.BatteryStd, "배터리",
+                        tint = if (st.battery <= 15 && !st.charging) P.c.danger else P.c.inkSoft, modifier = Modifier.size(15.dp))
+                    Text("${st.battery}%", fontSize = 13.sp, color = P.c.inkSoft, fontWeight = FontWeight.SemiBold)
                 }
             }
+            if (peer.model.isNotBlank()) Text(peer.model, fontSize = 12.sp, color = P.c.inkSoft.copy(alpha = 0.8f))
         }
     }
     if (snoozed) {
-        Spacer(Modifier.height(10.dp))
-        Chip("${peer.name}님은 요청을 받지 않는 중 · ${snoozeLabel(st!!.snoozeUntil)}", P.c.amber, Icons.Rounded.Bedtime)
-    }
-
-    val ringActive = out?.kind == RequestKind.RING && out.active
-    val ringing = ringActive && out?.ring == RingState.RINGING
-    Spacer(Modifier.height(28.dp))
-    Box(Modifier.fillMaxWidth().height(280.dp), contentAlignment = Alignment.Center) {
-        Pulse(P.c.coral, active = ringActive, modifier = Modifier.size(280.dp))
-        val color by animateColorAsState(if (ringActive) P.c.ink else P.c.coral, label = "btn")
-        Column(
-            Modifier
-                .size(196.dp)
-                .shadow(if (ringActive) 0.dp else 18.dp, CircleShape, spotColor = P.c.coral)
-                .clip(CircleShape)
-                .background(color)
-                .clickable(role = Role.Button) { if (ringActive) Hub.stopRing(peer.id) else Hub.ring(peer.id) }
-                .semantics { contentDescription = if (ringActive) "그만 울리기" else "${peer.name} 폰 울리기" },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Row(
+            Modifier.fillMaxWidth().padding(top = 14.dp).clip(RoundedCornerShape(16.dp))
+                .background(P.c.butter.copy(alpha = if (P.c.dark) 0.16f else 0.35f)).padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(if (ringActive) Icons.Rounded.Stop else Icons.Rounded.NotificationsActive, null,
-                tint = Color.White, modifier = Modifier.size(56.dp))
-            Spacer(Modifier.height(6.dp))
-            Text(if (ringing) "그만 울리기" else if (ringActive) "취소" else "울리기",
-                color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black)
+            Icon(Icons.Rounded.Bedtime, null, tint = P.c.amber, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("${peer.name}님은 지금 요청을 받지 않아요 · ${snoozeLabel(st!!.snoozeUntil)}", fontSize = 14.sp,
+                color = P.c.ink, fontWeight = FontWeight.SemiBold)
         }
     }
 
-    val statusText = out?.let { describe(it, peer.name) }
-    AnimatedVisibility(statusText != null) {
-        Text(statusText.orEmpty(), Modifier.fillMaxWidth().padding(horizontal = 8.dp), textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.titleMedium, color = statusColor(out))
-    }
-    if (out?.noResponse == true || (out != null && !out.active && out.kind == RequestKind.RING && out.ring != RingState.FOUND)) {
-        Spacer(Modifier.height(6.dp))
-        Text("닫기", Modifier.fillMaxWidth().clickable { Hub.dismissOutgoing(peer.id) }.padding(8.dp),
-            textAlign = TextAlign.Center, color = P.c.inkSoft, fontSize = 14.sp)
+    val ringOut = out?.takeIf { it.kind == RequestKind.RING }
+    val ringActive = ringOut?.active == true
+    val ringing = ringActive && ringOut?.ring == RingState.RINGING
+    Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
+        Orb(
+            label = when { ringing -> "그만 울리기"; ringActive -> "취소"; else -> "울리기" },
+            icon = if (ringActive) Icons.Rounded.Stop else Icons.Rounded.NotificationsActive,
+            mode = when { ringing -> OrbMode.RINGING; ringActive -> OrbMode.WAITING; else -> OrbMode.IDLE },
+            color = if (ringActive) (if (P.c.dark) P.c.sofaSoft else P.c.ink) else P.c.coral,
+            deep = if (ringActive) Color(0xFF0E1024) else P.c.coralDeep,
+            ringColor = P.c.coral,
+            description = if (ringActive) "울리기 멈추기" else "${peer.name} 폰 울리기",
+        ) { if (ringActive) Hub.stopRing(peer.id) else Hub.ring(peer.id) }
     }
 
-    Spacer(Modifier.height(20.dp))
-    val locateActive = out?.kind == RequestKind.LOCATE && out.active
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        PillButton(if (locateActive) "위치 확인 중…" else "위치 보기", Icons.Rounded.LocationOn, P.c.indigo, Color.White,
-            outlined = true, enabled = !locateActive) { Hub.locate(peer.id) }
+    AnimatedVisibility(out != null, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+        out?.let { RequestCard(peer, it) }
     }
     out?.result?.takeIf { out.kind == RequestKind.LOCATE }?.let { LocationCard(peer.name, it) }
+
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val locateActive = out?.kind == RequestKind.LOCATE && out.active
+        Tile("위치 보기", if (locateActive) "확인하는 중…" else "한 번만 요청해요", Icons.Rounded.LocationOn, P.c.sofa,
+            Modifier.weight(1f), enabled = !locateActive) { Hub.locate(peer.id) }
+        Tile("기록", "누가 언제 찾았는지", Icons.Rounded.ReceiptLong, P.c.amber, Modifier.weight(1f), onClick = onHistory)
+    }
+}
+
+/** Where a request is: the real step sequence, a plain sentence, and how to dismiss it. */
+@Composable
+private fun RequestCard(peer: Peer, o: Outgoing) {
+    val (steps, current, failedAt, done) = progress(o)
+    val accent = if (o.kind == RequestKind.RING) P.c.coral else P.c.sofa
+    Column(
+        Modifier.fillMaxWidth().padding(top = 4.dp).clip(RoundedCornerShape(24.dp)).background(P.c.surface)
+            .border(1.dp, P.c.hairline, RoundedCornerShape(24.dp)).padding(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (o.kind == RequestKind.RING) "울리기 요청" else "위치 요청", style = MaterialTheme.typography.labelSmall,
+                color = accent, modifier = Modifier.weight(1f))
+            if (!o.active) {
+                Icon(Icons.Rounded.Close, "닫기", tint = P.c.inkSoft,
+                    modifier = Modifier.size(28.dp).clip(CircleShape).clickable { Hub.dismissOutgoing(peer.id) }.padding(4.dp))
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        StepTracker(steps, current, accent, failedAt, done)
+        Spacer(Modifier.height(14.dp))
+        Text(describe(o, peer.name), style = MaterialTheme.typography.titleMedium, color = statusColor(o))
+    }
+}
+
+private data class Progress(val steps: List<String>, val current: Int, val failedAt: Int?, val done: Boolean)
+
+private fun progress(o: Outgoing): Progress {
+    if (o.kind == RequestKind.RING) {
+        val steps = listOf("보냄", "확인 10초", "울리는 중", "찾음")
+        return when {
+            o.sendError != null -> Progress(steps, 0, 0, false)
+            o.noResponse -> Progress(steps, 1, 1, false)
+            else -> when (o.ring) {
+                null -> Progress(steps, 0, null, false)
+                RingState.COUNTDOWN -> Progress(steps, 1, null, false)
+                RingState.RINGING -> Progress(steps, 2, null, false)
+                RingState.FOUND -> Progress(steps, 3, null, true)
+                RingState.TIMEOUT, RingState.STOPPED -> Progress(steps, 2, null, true)
+                RingState.DECLINED, RingState.SNOOZED, RingState.BUSY, RingState.ERROR -> Progress(steps, 1, 1, false)
+            }
+        }
+    }
+    val steps = listOf("보냄", "확인", "찾는 중", "받음")
+    return when {
+        o.result != null -> Progress(steps, 3, null, true)
+        o.sendError != null -> Progress(steps, 0, 0, false)
+        o.noResponse -> Progress(steps, 1, 1, false)
+        else -> when (o.locate) {
+            null -> Progress(steps, 0, null, false)
+            LocateState.COUNTDOWN, LocateState.ASKING -> Progress(steps, 1, null, false)
+            LocateState.LOCATING -> Progress(steps, 2, null, false)
+            LocateState.UNAVAILABLE, LocateState.ERROR -> Progress(steps, 2, 2, false)
+            else -> Progress(steps, 1, 1, false)
+        }
+    }
 }
 
 @Composable
@@ -241,41 +316,33 @@ private fun LocationCard(name: String, r: Msg.LocateResult) {
             }.getOrNull()
         }
     }
-    Card(Modifier.fillMaxWidth().padding(top = 18.dp), padding = 18.dp) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(CircleShape).background(P.c.indigo.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.LocationOn, null, tint = P.c.indigo)
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("${name}님의 위치", style = MaterialTheme.typography.titleMedium, color = P.c.ink)
-                    Text("${clockTime(r.fixAt)} 기준 · 오차 약 ${r.accuracyM.toInt()}m", fontSize = 13.sp, color = P.c.inkSoft)
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(address ?: String.format(Locale.US, "%.5f, %.5f", r.lat, r.lng),
-                style = MaterialTheme.typography.bodyMedium, color = P.c.ink)
+    Column(
+        Modifier.fillMaxWidth().padding(top = 16.dp).clip(RoundedCornerShape(24.dp)).background(P.c.surface)
+            .border(1.dp, P.c.hairline, RoundedCornerShape(24.dp)).padding(10.dp),
+    ) {
+        MiniMap(r.lat, r.lng, r.accuracyM, Modifier.fillMaxWidth().height(190.dp))
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
+            Text("${name}님은 여기 있어요", style = MaterialTheme.typography.titleLarge, color = P.c.ink)
+            Spacer(Modifier.height(4.dp))
+            Text(address ?: String.format(Locale.US, "%.5f, %.5f", r.lat, r.lng), style = MaterialTheme.typography.bodyMedium, color = P.c.ink)
+            Text("${clockTime(r.fixAt)} 기준 · 오차 약 ${r.accuracyM.toInt()}m", fontSize = 13.sp, color = P.c.inkSoft)
             Spacer(Modifier.height(14.dp))
-            PillButton("지도에서 보기", Icons.Rounded.Map, P.c.indigo, Color.White, modifier = Modifier.fillMaxWidth()) {
+            PillButton("지도 앱에서 길찾기", Icons.Rounded.Directions, P.c.sofa, Color.White, Modifier.fillMaxWidth()) {
                 val uri = Uri.parse("geo:${r.lat},${r.lng}?q=${r.lat},${r.lng}(${Uri.encode(name)})")
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-                    .onFailure {
-                        context.startActivity(Intent(Intent.ACTION_VIEW,
-                            Uri.parse("https://maps.google.com/?q=${r.lat},${r.lng}")))
-                    }
+                    .onFailure { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com/?q=${r.lat},${r.lng}"))) }
             }
         }
     }
 }
 
 @Composable
-private fun statusColor(out: Outgoing?): Color = when {
-    out == null -> P.c.inkSoft
-    out.sendError != null || out.noResponse -> P.c.danger
-    out.ring == RingState.FOUND -> P.c.sage
-    out.ring == RingState.RINGING -> P.c.coralDeep
-    out.ring == RingState.SNOOZED || out.locate == LocateState.SNOOZED -> P.c.amber
+private fun statusColor(o: Outgoing): Color = when {
+    o.sendError != null || o.noResponse -> P.c.danger
+    o.ring == RingState.FOUND || o.result != null -> P.c.sage
+    o.ring == RingState.RINGING -> P.c.coralDeep
+    o.ring == RingState.SNOOZED || o.locate == LocateState.SNOOZED -> P.c.amber
+    o.ring == RingState.DECLINED || o.locate == LocateState.DECLINED -> P.c.danger
     else -> P.c.ink
 }
 
@@ -287,7 +354,7 @@ fun describe(o: Outgoing, name: String): String {
         RequestKind.RING -> when (o.ring) {
             null -> "요청을 보냈어요 · 응답 기다리는 중…"
             RingState.COUNTDOWN -> "${name}님 폰에 요청이 떴어요. 곧 울려요"
-            RingState.RINGING -> "울리는 중이에요 🔔"
+            RingState.RINGING -> "울리는 중이에요 🔔 소리를 따라가 보세요"
             RingState.FOUND -> "찾았대요! 🎉"
             RingState.DECLINED -> "${name}님이 요청을 거절했어요"
             RingState.SNOOZED -> "${name}님은 지금 요청을 받지 않고 있어요"
@@ -297,7 +364,7 @@ fun describe(o: Outgoing, name: String): String {
             RingState.ERROR -> "${name}님 폰에서 소리를 내지 못했어요"
         }
         RequestKind.LOCATE -> when {
-            o.result != null -> "위치를 받았어요"
+            o.result != null -> "위치가 도착했어요"
             else -> when (o.locate) {
                 null -> "요청을 보냈어요 · 응답 기다리는 중…"
                 LocateState.COUNTDOWN -> "${name}님에게 알림이 갔어요. 곧 위치가 도착해요"

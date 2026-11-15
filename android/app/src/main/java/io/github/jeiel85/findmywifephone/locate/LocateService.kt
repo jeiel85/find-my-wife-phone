@@ -193,6 +193,11 @@ class LocateService : Service() {
             }
         }
 
+        /** Debug builds only: shows the alert screen without a real request. */
+        fun debugPreview(ui: LocateUi?) {
+            if (io.github.jeiel85.findmywifephone.BuildConfig.DEBUG) _ui.value = ui
+        }
+
         fun decline() = instance?.let { s -> s.main.post { s.finish(LocateState.DECLINED) } }
         fun allow() = instance?.let { s -> s.main.post { s.locateNow() } }
 

@@ -209,6 +209,11 @@ class RingService : Service() {
             }
         }
 
+        /** Debug builds only: shows the alert screen without a real request (no sound, no service). */
+        fun debugPreview(ui: RingUi?) {
+            if (io.github.jeiel85.findmywifephone.BuildConfig.DEBUG) _ui.value = ui
+        }
+
         fun decline() = instance?.let { svc -> svc.main.post { svc.finish(RingState.DECLINED) } }
         fun found() = instance?.let { svc -> svc.main.post { svc.finish(RingState.FOUND) } }
 

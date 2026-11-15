@@ -22,6 +22,21 @@
 “여보, 내 폰 어디 있는지 알아?” 하고 물을 때 바로 답할 수 있도록 만든 앱입니다. 두 폰을 QR로 한 번 연결해 두면,
 같은 Wi-Fi든 밖이든 인터넷만 되면 서로의 폰을 울리거나 위치를 확인할 수 있습니다.
 
+<table>
+<tr>
+<td align="center"><img src="docs/assets/screens/home.webp" width="200" alt="홈: 울리기 버튼"><br><sub>찾는 폰 · 버튼 하나</sub></td>
+<td align="center"><img src="docs/assets/screens/ringing.webp" width="200" alt="단계별 진행 상황"><br><sub>단계별 진행 상황</sub></td>
+<td align="center"><img src="docs/assets/screens/countdown.webp" width="200" alt="10초 거절 창"><br><sub>찾아지는 폰 · 10초 거절 창</sub></td>
+<td align="center"><img src="docs/assets/screens/found-me.webp" width="200" alt="여기 있어요"><br><sub>여기 있어요!</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/assets/screens/map.webp" width="200" alt="위치 지도"><br><sub>위치는 한 번만, 지도로</sub></td>
+<td align="center"><img src="docs/assets/screens/history.webp" width="200" alt="기록"><br><sub>지울 수 없는 기록</sub></td>
+<td align="center"><img src="docs/assets/screens/empty.webp" width="200" alt="처음 화면"><br><sub>처음 화면</sub></td>
+<td></td>
+</tr>
+</table>
+
 ## 무엇을 하나요
 
 | | |
@@ -103,6 +118,14 @@ cd android && ./gradlew testDebugUnitTest assembleDebug -Papp.relayUrl=https://<
 중계 서버(Cloudflare D1)에 저장되는 것: 무작위 기기 ID, 토큰의 해시, FCM 토큰, 연결된 기기 쌍, 10분짜리 페어링 초대(비밀값의 해시),
 요청 횟수 카운터(하루 뒤 삭제). 위치·이름·배터리·요청 종류는 저장하지도 볼 수도 없습니다.
 앱 데이터는 백업·기기 이전에서 제외되고, 비밀값은 Android Keystore로 감싸 저장됩니다.
+받은 위치를 지도로 그릴 때는 그 주변 지도 조각을 OpenStreetMap 타일 서버에서 받아옵니다(지도를 열 때만).
+
+## 개발 메모
+
+- 처음 설정: [design/FIREBASE_SETUP.md](design/FIREBASE_SETUP.md) → `scripts/finish-firebase.sh`
+- 릴리스 전 실기기 체크리스트: [design/VERIFY.md](design/VERIFY.md) → `scripts/release.sh <버전>`
+- 디버그 빌드에는 화면 검수용 `DemoActivity`가 있습니다(릴리스 빌드에는 포함되지 않음):
+  `adb shell am start -S -n io.github.jeiel85.findmywifephone/.DemoActivity --es state ringing`
 
 ## 라이선스
 

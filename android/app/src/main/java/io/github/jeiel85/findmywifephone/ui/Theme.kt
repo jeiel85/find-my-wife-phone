@@ -9,20 +9,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 /*
- * "Warm home" identity: cream paper, ink text, one loud coral for the thing you came to do
- * (make it ring), indigo for location, sage for "found", amber for "not accepting requests".
- * Same hex values as the landing page (docs/assets/site.css).
+ * "Living room at evening" — the same identity as the landing page (docs/assets/site.css):
+ * a periwinkle wall, the indigo sofa, one loud coral for the thing you came to do (make it
+ * ring), lamp butter for "not accepting requests", sage for "found". Dark mode is the same room
+ * with the lights off and the lamp on.
  */
 @Immutable
 data class Palette(
     val dark: Boolean,
-    val background: Color,
+    val wallTop: Color,
+    val wallBottom: Color,
     val surface: Color,
     val surfaceSoft: Color,
     val ink: Color,
@@ -30,45 +33,60 @@ data class Palette(
     val hairline: Color,
     val coral: Color,
     val coralDeep: Color,
+    val coralGlow: Color,
     val onCoral: Color,
-    val indigo: Color,
+    val sofa: Color,
+    val sofaSoft: Color,
+    val butter: Color,
     val sage: Color,
     val amber: Color,
     val danger: Color,
-)
+) {
+    val background get() = wallTop
+    val indigo get() = sofa
+    val wall: Brush get() = Brush.verticalGradient(listOf(wallTop, wallBottom))
+}
 
 private val Light = Palette(
     dark = false,
-    background = Color(0xFFFBF7F2),
+    wallTop = Color(0xFFE6EAFF),
+    wallBottom = Color(0xFFF7F8FF),
     surface = Color(0xFFFFFFFF),
-    surfaceSoft = Color(0xFFF4EEE6),
+    surfaceSoft = Color(0xFFEEF1FF),
     ink = Color(0xFF1F2235),
-    inkSoft = Color(0xFF5F6375),   // 5.9:1 on cream
-    hairline = Color(0xFFE9E1D6),
+    inkSoft = Color(0xFF555B78),     // 6.6:1 on white
+    hairline = Color(0xFFD9DEF7),
     coral = Color(0xFFFF6B5B),
     coralDeep = Color(0xFFE04A3A),
+    coralGlow = Color(0x66FF6B5B),
     onCoral = Color(0xFFFFFFFF),
-    indigo = Color(0xFF4B5BDB),
-    sage = Color(0xFF23936B),
-    amber = Color(0xFFC77D0A),
+    sofa = Color(0xFF3340A8),
+    sofaSoft = Color(0xFF9AA6FF),
+    butter = Color(0xFFFFD66B),
+    sage = Color(0xFF1E8A60),
+    amber = Color(0xFFB86E00),
     danger = Color(0xFFC8372D),
 )
 
 private val Dark = Palette(
     dark = true,
-    background = Color(0xFF13141B),
-    surface = Color(0xFF1D1F29),
-    surfaceSoft = Color(0xFF262935),
-    ink = Color(0xFFF4F1EC),
-    inkSoft = Color(0xFFA9ACBC),
-    hairline = Color(0xFF2E3140),
+    wallTop = Color(0xFF151832),
+    wallBottom = Color(0xFF0C0D1C),
+    surface = Color(0xFF1C1F3A),
+    surfaceSoft = Color(0xFF252947),
+    ink = Color(0xFFF2F2FA),
+    inkSoft = Color(0xFFA8ADCF),
+    hairline = Color(0xFF2E3357),
     coral = Color(0xFFFF7A6B),
     coralDeep = Color(0xFFFF5A48),
-    onCoral = Color(0xFF1B0B08),
-    indigo = Color(0xFF8C98FF),
-    sage = Color(0xFF4CC797),
-    amber = Color(0xFFF2B54A),
-    danger = Color(0xFFFF7B70),
+    coralGlow = Color(0x80FF6B5B),
+    onCoral = Color(0xFFFFFFFF),
+    sofa = Color(0xFF8C98FF),
+    sofaSoft = Color(0xFF5A66D6),
+    butter = Color(0xFFFFD66B),
+    sage = Color(0xFF52D19E),
+    amber = Color(0xFFFFC85A),
+    danger = Color(0xFFFF8277),
 )
 
 val LocalPalette = staticCompositionLocalOf { Light }
@@ -81,22 +99,24 @@ object P {
 fun AppTheme(content: @Composable () -> Unit) {
     val p = if (isSystemInDarkTheme()) Dark else Light
     val scheme = if (p.dark) {
-        darkColorScheme(primary = p.coral, onPrimary = p.onCoral, secondary = p.indigo, background = p.background,
+        darkColorScheme(primary = p.coral, onPrimary = p.onCoral, secondary = p.sofa, background = p.wallTop,
             surface = p.surface, onSurface = p.ink, onBackground = p.ink, surfaceVariant = p.surfaceSoft,
-            onSurfaceVariant = p.inkSoft, outline = p.hairline, error = p.danger)
+            onSurfaceVariant = p.inkSoft, outline = p.hairline, error = p.danger, surfaceContainerLow = p.surface)
     } else {
-        lightColorScheme(primary = p.coral, onPrimary = p.onCoral, secondary = p.indigo, background = p.background,
+        lightColorScheme(primary = p.coral, onPrimary = p.onCoral, secondary = p.sofa, background = p.wallTop,
             surface = p.surface, onSurface = p.ink, onBackground = p.ink, surfaceVariant = p.surfaceSoft,
-            onSurfaceVariant = p.inkSoft, outline = p.hairline, error = p.danger)
+            onSurfaceVariant = p.inkSoft, outline = p.hairline, error = p.danger, surfaceContainerLow = p.surface)
     }
     val base = Typography()
     val type = base.copy(
-        displaySmall = base.displaySmall.copy(fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp),
-        headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp),
-        headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.3).sp),
-        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
+        displaySmall = base.displaySmall.copy(fontWeight = FontWeight.Black, letterSpacing = (-1).sp, lineHeight = 44.sp),
+        headlineLarge = base.headlineLarge.copy(fontWeight = FontWeight.Black, letterSpacing = (-0.8).sp),
+        headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.Black, letterSpacing = (-0.6).sp),
+        headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.4).sp),
+        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.2).sp),
         titleMedium = base.titleMedium.copy(fontWeight = FontWeight.Bold),
         labelLarge = base.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp),
+        labelSmall = base.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.6.sp),
         bodyMedium = TextStyle(fontSize = 15.sp, lineHeight = 22.sp),
     )
     CompositionLocalProvider(LocalPalette provides p) {
