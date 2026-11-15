@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PKG="io.github.jeiel85.findmywifephone"
+PKG="com.jeiel85.ponerdi"
 DL="${USERPROFILE:-$HOME}/Downloads"
 GS="${1:-$(ls -t "$DL"/google-services*.json 2>/dev/null | head -1 || true)}"
 SA="${2:-$(ls -t "$DL"/*firebase-adminsdk*.json 2>/dev/null | head -1 || true)}"

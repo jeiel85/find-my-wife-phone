@@ -12,7 +12,7 @@
 ## 2. Android 앱 등록 → `google-services.json`
 
 1. 프로젝트 개요 화면에서 **Android 아이콘**(앱 추가).
-2. Android 패키지 이름: **`io.github.jeiel85.findmywifephone`** (정확히 이 값). 앱 닉네임: `폰 찾기`. SHA-1은 비워 둡니다.
+2. Android 패키지 이름: **`com.jeiel85.ponerdi`** (정확히 이 값). 앱 닉네임: `포너디`. SHA-1은 비워 둡니다.
 3. **앱 등록** → **google-services.json 다운로드** → 나머지 단계(SDK 추가 등)는 *다음*/*콘솔로 이동*으로 건너뜁니다.
 
 ## 3. 서비스 계정 키 → `…-firebase-adminsdk-….json`

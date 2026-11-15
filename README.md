@@ -130,7 +130,7 @@ cd android && ./gradlew testDebugUnitTest assembleDebug -Papp.relayUrl=https://<
 - 처음 설정: [design/FIREBASE_SETUP.md](design/FIREBASE_SETUP.md) → `scripts/finish-firebase.sh`
 - 릴리스 전 실기기 체크리스트: [design/VERIFY.md](design/VERIFY.md) → `scripts/release.sh <버전>`
 - 디버그 빌드에는 화면 검수용 `DemoActivity`가 있습니다(릴리스 빌드에는 포함되지 않음):
-  `adb shell am start -S -n io.github.jeiel85.findmywifephone/.DemoActivity --es state ringing`
+  `adb shell am start -S -n com.jeiel85.ponerdi/io.github.jeiel85.findmywifephone.DemoActivity --es state ringing`
 
 ## 라이선스
 
