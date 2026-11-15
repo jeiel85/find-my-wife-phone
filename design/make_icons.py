@@ -1,17 +1,19 @@
-"""Builds every icon size from the Codex-generated masters in design/icon/.
+"""Builds every icon size from the Codex-generated motif in design/icon/icon-foreground.png.
 
     python design/make_icons.py
 
 - Android adaptive icon foreground (108dp layer) per density, motif re-centred and scaled so the
   outermost wave stays inside the 66dp safe circle; monochrome layer for themed icons.
+- Full icon = that motif on the launcher's coral gradient (res/drawable/ic_launcher_bg.xml), so the
+  web icons and the Android adaptive layers can never drift apart.
 - Web: favicon/touch icons and the 1200x630 og:image for the landing page.
 """
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-FULL = Image.open(ROOT / "design/icon/icon-full.png").convert("RGBA")
 FG = Image.open(ROOT / "design/icon/icon-foreground.png").convert("RGBA")
+CORAL_START, CORAL_END = (0xFF, 0x6E, 0x5C), (0xE2, 0x4B, 0x3B)  # ic_launcher_bg.xml, angle 315
 RES = ROOT / "android/app/src/main/res"
 WEB = ROOT / "docs/assets"
 
@@ -28,10 +30,24 @@ def centred_motif(size: int, fraction: float) -> Image.Image:
     return canvas
 
 
+def full_icon(size: int = 1024) -> Image.Image:
+    """Coral diagonal gradient (top-left → bottom-right) with the motif at the adaptive-icon scale."""
+    bg = Image.new("RGBA", (size, size))
+    px = bg.load()
+    for y in range(size):
+        for x in range(size):
+            t = (x + y) / (2 * (size - 1))
+            px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(CORAL_START, CORAL_END)) + (255,)
+    bg.alpha_composite(centred_motif(size, 0.74))
+    return bg
+
+
 def monochrome(img: Image.Image) -> Image.Image:
-    """White silhouette; the launcher tints it for themed icons."""
+    """White silhouette for themed icons; the dark navy screen is cut out so the eyes stay visible."""
+    lum = img.convert("RGB").convert("L").point(lambda v: 255 if v > 52 else 0)
+    alpha = Image.composite(img.getchannel("A"), Image.new("L", img.size, 0), lum)
     white = Image.new("RGBA", img.size, (255, 255, 255, 0))
-    white.putalpha(img.getchannel("A"))
+    white.putalpha(alpha)
     return white
 
 
@@ -43,6 +59,8 @@ def main() -> None:
         fg.save(d / "ic_launcher_foreground.png", optimize=True)
         monochrome(fg).save(d / "ic_launcher_monochrome.png", optimize=True)
 
+    FULL = full_icon()
+    FULL.save(ROOT / "design/icon/icon-full.png", optimize=True)
     WEB.mkdir(parents=True, exist_ok=True)
     for px in (192, 512):
         FULL.resize((px, px), Image.LANCZOS).save(WEB / f"icon-{px}.png", optimize=True)
@@ -58,8 +76,8 @@ def main() -> None:
     font_path = next((p for p in [Path("C:/Windows/Fonts/malgunbd.ttf"), Path("C:/Windows/Fonts/malgun.ttf")] if p.exists()), None)
     big = ImageFont.truetype(str(font_path), 64) if font_path else ImageFont.load_default()
     small = ImageFont.truetype(str(font_path), 34) if font_path else ImageFont.load_default()
-    draw.text((540, 210), "폰 찾기", font=big, fill=(31, 34, 53))
-    draw.text((540, 305), "소파 밑 폰도 버튼 한 번에.", font=small, fill=(51, 64, 168))
+    draw.text((540, 210), "포너디", font=big, fill=(31, 34, 53))
+    draw.text((540, 305), "폰 어디? 소파 밑 폰도 버튼 한 번에.", font=small, fill=(51, 64, 168))
     draw.text((540, 360), "무음이어도 울리고, 찾으면 원래대로.", font=small, fill=(74, 79, 105))
     og.convert("RGB").save(WEB / "og.png", optimize=True)
     print("icons written")

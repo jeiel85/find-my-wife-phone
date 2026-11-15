@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/icon-512.png" width="112" alt="폰 찾기 아이콘">
+<img src="docs/assets/icon-512.png" width="112" alt="포너디 아이콘">
 
-# 폰 찾기 · Find My Wife Phone
+# 포너디 · Find My Wife Phone
 
-**소파 밑에 있어도, 버튼 한 번이면 울려요.**<br>
+**“폰 어디?” — 소파 밑에 있어도, 버튼 한 번이면 울려요.**<br>
 무음·방해 금지여도 크게 울리고, 찾으면 소리 설정이 원래대로 돌아가는 가족용 Android 앱.
 
 [![Release](https://img.shields.io/github/v/release/jeiel85/find-my-wife-phone?color=FF6B5B&label=APK)](https://github.com/jeiel85/find-my-wife-phone/releases/latest)

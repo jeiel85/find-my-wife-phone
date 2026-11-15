@@ -135,5 +135,5 @@ object Notifier {
             .build())
 
     fun updated(context: Context, version: String) =
-        info(context, ID_INFO_BASE + 5, "$version 버전으로 업데이트했어요", "설정 → 업데이트에서 바뀐 점을 볼 수 있어요.", MainActivity.SCREEN_SETTINGS)
+        info(context, ID_INFO_BASE + 5, "$version 버전으로 업데이트했어요", "연결과 기록, 설정은 그대로예요.", MainActivity.SCREEN_SETTINGS)
 }
