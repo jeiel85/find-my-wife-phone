@@ -67,6 +67,21 @@ class RingService : Service() {
         val reqId = intent.getStringExtra(EXTRA_REQ) ?: return stopSelf()
         val from = intent.getStringExtra(EXTRA_PEER) ?: return stopSelf()
         val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
+        if (Hub.store.wasCancelled(reqId)) {
+            // The cancel was handled after Hub let this ring through but before it got here.
+            Hub.history.update(reqId, Direction.IN, RingState.STOPPED.wire)
+            if (_ui.value == null) {
+                // startForegroundService() must be answered by startForeground() even when nothing rings.
+                runCatching {
+                    ServiceCompat.startForeground(this, Notifier.ID_RING,
+                        Notifier.ringCountdown(this, RingUi(reqId, name, ringing = false, secondsLeft = COUNTDOWN_SEC)),
+                        if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0)
+                }
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            return
+        }
         if (_ui.value != null) {
             // Already handling one; the second requester learns it is busy.
             Hub.reply(from, Msg.RingUpdate(reqId, RingState.BUSY, Hub.myStatus()))

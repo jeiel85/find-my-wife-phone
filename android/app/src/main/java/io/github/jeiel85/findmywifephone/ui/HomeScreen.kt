@@ -224,7 +224,7 @@ private fun PeerPanel(peer: Peer, out: Outgoing?, onHistory: () -> Unit) {
     val ringing = ringActive && ringOut?.ring == RingState.RINGING
     Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
         Orb(
-            label = when { ringing -> "그만 울리기"; ringActive -> "취소"; else -> "울리기" },
+            label = when { ringOut?.stopping == true -> "멈추는 중"; ringing -> "그만 울리기"; ringActive -> "취소"; else -> "울리기" },
             icon = if (ringActive) Icons.Rounded.Stop else Icons.Rounded.NotificationsActive,
             mode = when { ringing -> OrbMode.RINGING; ringActive -> OrbMode.WAITING; else -> OrbMode.IDLE },
             color = if (ringActive) (if (P.c.dark) P.c.sofaSoft else P.c.ink) else P.c.coral,
@@ -342,6 +342,7 @@ private fun LocationCard(name: String, r: Msg.LocateResult) {
 @Composable
 private fun statusColor(o: Outgoing): Color = when {
     o.sendError != null || o.noResponse -> P.c.danger
+    o.stopError != null && o.active -> P.c.danger
     o.ring == RingState.FOUND || o.result != null -> P.c.sage
     o.ring == RingState.RINGING -> P.c.coralDeep
     o.ring == RingState.SNOOZED || o.locate == LocateState.SNOOZED -> P.c.amber
@@ -353,6 +354,10 @@ fun describe(o: Outgoing, name: String): String {
     o.sendError?.let { return "보내지 못했어요 · ${errorText(it)}" }
     if (!o.sent) return "요청을 보내는 중…"
     if (o.noResponse) return "응답이 없어요. ${name}님 폰이 꺼져 있거나 인터넷에 연결되지 않았을 수 있어요."
+    if (o.kind == RequestKind.RING && o.active) {
+        if (o.stopping) return "멈추는 중…"
+        o.stopError?.let { return "멈추지 못했어요 · ${errorText(it)}. 다시 눌러 주세요" }
+    }
     return when (o.kind) {
         RequestKind.RING -> when (o.ring) {
             null -> "요청을 보냈어요 · 응답 기다리는 중…"
