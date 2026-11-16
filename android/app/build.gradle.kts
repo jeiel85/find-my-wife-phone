@@ -35,14 +35,14 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "io.github.jeiel85.findmywifephone"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         // Kotlin namespace stays io.github.jeiel85.findmywifephone; the app id is what Android and
         // Play see (renamed for Play in v0.3.0 — DECISIONS.md D-9).
         applicationId = "com.jeiel85.ponerdi"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersion
         buildConfigField("String", "RELAY_URL", "\"$relayUrl\"")
