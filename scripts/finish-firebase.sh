@@ -50,10 +50,10 @@ echo "✓ key kept at $KEEP/service-account.json (current user only)"
 echo "✓ relay secret FCM_SERVICE_ACCOUNT set"
 
 (cd relay && npm test --silent >/dev/null) && echo "✓ relay tests"
-(cd android && ./gradlew.bat --console=plain -q testDebugUnitTest assembleDebug assembleRelease)
+(cd android && ./gradlew.bat --console=plain -q testGithubDebugUnitTest assembleGithubDebug assembleGithubRelease)
 mkdir -p dist
-cp android/app/build/outputs/apk/release/app-release.apk dist/find-my-wife-phone.apk
-cp android/app/build/outputs/apk/debug/app-debug.apk dist/find-my-wife-phone-debug.apk
+cp android/app/build/outputs/apk/github/release/app-github-release.apk dist/find-my-wife-phone.apk
+cp android/app/build/outputs/apk/github/debug/app-github-debug.apk dist/find-my-wife-phone-debug.apk
 echo "✓ dist/find-my-wife-phone.apk  sha256 $(sha256sum dist/find-my-wife-phone.apk | cut -d' ' -f1)"
 echo
 echo "Next: install on both phones (adb install -r dist/find-my-wife-phone.apk), pair them, and run the checklist in design/VERIFY.md."

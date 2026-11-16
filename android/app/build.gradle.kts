@@ -18,18 +18,24 @@ val appVersionCode = appVersion.split('.', '-').take(3).map { it.toIntOrNull() ?
 val relayUrl = providers.gradleProperty("app.relayUrl")
     .orElse("https://find-my-wife-phone-relay.jeiel85.workers.dev").get()
 
-// --- Release signing (values live in release-signing.properties, never in git) ---------------
-val signingProps = Properties().apply {
-    rootProject.file("release-signing.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
+// --- Release signing (values live in *-signing.properties, never in git) ---------------------
+// Each channel signs with its own key (DECISIONS.md D-10): github = the key sideloaded phones
+// verify updates against; play = the Play upload key (Google re-signs with the app signing key).
+fun signingProps(file: String) = Properties().apply {
+    rootProject.file(file).takeIf { it.exists() }?.inputStream()?.use(::load)
 }
-fun signing(name: String): String? = providers.environmentVariable(name).orNull ?: signingProps.getProperty(name)
-val storeFilePath = signing("FMWP_RELEASE_STORE_FILE")
-val hasReleaseSigning = listOf(
-    storeFilePath,
-    signing("FMWP_RELEASE_STORE_PASSWORD"),
-    signing("FMWP_RELEASE_KEY_ALIAS"),
-    signing("FMWP_RELEASE_KEY_PASSWORD"),
-).all { !it.isNullOrBlank() }
+val githubSigning = signingProps("release-signing.properties")
+val playSigning = signingProps("play-upload-signing.properties")
+fun signing(props: Properties, name: String): String? = providers.environmentVariable(name).orNull ?: props.getProperty(name)
+
+/** Returns store file, store password, alias, key password when all are set. */
+fun signingValues(props: Properties, prefix: String): List<String>? =
+    listOf("STORE_FILE", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")
+        .map { signing(props, "${prefix}_$it") }
+        .takeIf { values -> values.all { !it.isNullOrBlank() } }
+        ?.map { it!! }
+val githubKey = signingValues(githubSigning, "FMWP_RELEASE")
+val playKey = signingValues(playSigning, "FMWP_PLAY_UPLOAD")
 
 android {
     namespace = "io.github.jeiel85.findmywifephone"
@@ -48,13 +54,31 @@ android {
     }
 
     signingConfigs {
-        if (hasReleaseSigning) {
-            create("release") {
-                storeFile = rootProject.file(storeFilePath!!)
-                storePassword = signing("FMWP_RELEASE_STORE_PASSWORD")
-                keyAlias = signing("FMWP_RELEASE_KEY_ALIAS")
-                keyPassword = signing("FMWP_RELEASE_KEY_PASSWORD")
+        githubKey?.let { (file, storePass, alias, keyPass) ->
+            create("github") {
+                storeFile = rootProject.file(file); storePassword = storePass
+                keyAlias = alias; keyPassword = keyPass
             }
+        }
+        playKey?.let { (file, storePass, alias, keyPass) ->
+            create("playUpload") {
+                storeFile = rootProject.file(file); storePassword = storePass
+                keyAlias = alias; keyPassword = keyPass
+            }
+        }
+    }
+
+    // Separate builds per store (DECISIONS.md D-10). Same applicationId, different signing keys
+    // on the upload side; only the github build updates itself.
+    flavorDimensions += "channel"
+    productFlavors {
+        create("github") {
+            dimension = "channel"
+            if (githubKey != null) signingConfig = signingConfigs.getByName("github")
+        }
+        create("play") {
+            dimension = "channel"
+            if (playKey != null) signingConfig = signingConfigs.getByName("playUpload")
         }
     }
 
@@ -63,7 +87,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
         }
     }
 

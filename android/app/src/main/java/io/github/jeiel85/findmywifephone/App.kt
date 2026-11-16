@@ -7,7 +7,7 @@ import android.content.Intent
 import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.ring.SoundState
 import io.github.jeiel85.findmywifephone.ui.Notifier
-import io.github.jeiel85.findmywifephone.update.UpdateWorker
+import io.github.jeiel85.findmywifephone.update.SelfUpdate
 
 class App : Application() {
     override fun onCreate() {
@@ -16,7 +16,7 @@ class App : Application() {
         Hub.init(this)
         // A ring cut short by a crash or reboot must not leave the phone at full alarm volume.
         SoundState.restoreIfPending(this)
-        UpdateWorker.schedule(this, Hub.store.settings.value.autoUpdate)
+        SelfUpdate.onAppStart(this)
     }
 }
 

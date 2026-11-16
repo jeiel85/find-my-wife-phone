@@ -41,7 +41,7 @@ data class Settings(
     /** Camera flash on while ringing — helps when the phone is under a cushion in the dark. */
     val ringFlash: Boolean = true,
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    /** Release builds check GitHub Releases twice a day and install signed updates. */
+    /** GitHub release builds check GitHub Releases twice a day and install signed updates. Unused on Play. */
     val autoUpdate: Boolean = true,
 )
 
