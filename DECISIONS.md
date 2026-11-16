@@ -85,16 +85,20 @@
   새 앱을 한 번 설치하고 QR로 다시 연결한 뒤 옛 앱을 지웁니다. 중계·FCM 서비스 계정은 그대로이고, Firebase에 새 패키지 앱을 추가했습니다.
 - Play 앱 서명은 기존 릴리스 키를 그대로 올려(PEPK) GitHub APK와 Play 버전이 같은 키를 씁니다.
 
-## D-10 배포 채널별 빌드: `github` / `play` flavor, 업로드 키는 따로
+## D-10 배포 채널별 빌드: `github` / `play` flavor (서명 키는 하나)
 
 - 스토어마다 업데이트 방식이 달라 product flavor `channel`로 빌드를 나눕니다. 런타임에 설치 출처를 보고 끄지 않습니다.
   - `github`: GitHub Releases APK. 앱 자체 업데이트(D-7) 코드와 `REQUEST_INSTALL_PACKAGES`·`UPDATE_PACKAGES_WITHOUT_USER_ACTION`
     권한, `UpdateReceiver`는 `src/github`에만 있습니다.
   - `play`: Google Play AAB. 업데이터·설치 권한·APK 다운로드 코드가 아예 없고(Play 정책), 업데이트는 Play가 합니다.
   - 공통 코드는 `update.SelfUpdate`(채널마다 구현)와 `ui.UpdateSection`만 부릅니다.
-- 서명(2026-11-16 결정): GitHub APK는 기존 릴리스 키, Play AAB는 **별도의 Play 업로드 키**(`.keystore/ponerdi-play-upload.jks`,
-  `android/play-upload-signing.properties`)로 서명합니다. Google이 Play 설치본을 다시 서명하는 **앱 서명 키는 D-9대로 GitHub 릴리스 키**라,
-  Play와 GitHub 설치본은 서로 덮어 설치할 수 있고(재연결 불필요) 업로드 키가 새도 GitHub 채널은 영향이 없습니다.
-  업로드 키를 잃으면 Play Console에서 업로드 키 재설정을 요청할 수 있습니다(앱 서명 키는 재설정 불가).
-- 대안으로 본 것: 앱 서명 키까지 Play 전용으로 교체(채널을 바꿀 때마다 삭제·재설치·QR 재연결 필요), 현행 키 하나로 업로드까지(키 하나가 새면 두 채널이 함께 위험).
+- 서명(2026-11-16 결정): 두 채널 모두 **기존 릴리스 키 하나**로 서명합니다. 이 키가 GitHub APK 서명 키이자 Play 업로드 키이고,
+  Play 앱 서명 키도 D-9대로 같은 키라 Play와 GitHub 설치본은 서로 덮어 설치할 수 있습니다(연결·설정 유지).
+  전역 지침의 "채널마다 다른 키"에서 벗어난 예외로, 사용자가 첫 Play 업로드를 지체 없이 끝내는 쪽을 골랐습니다
+  (업로드 키 재설정은 Google 승인 대기가 있음).
+  - 대가: 이 키 하나가 새면 두 채널이 함께 위험합니다. 키 파일·비밀번호는 git 밖 `.keystore/`와 G드라이브 백업에만 둡니다.
+  - 나중에 업로드 키만 분리하려면 Play Console → 앱 서명 → 업로드 키 **재설정 요청**에 예비 키
+    `.keystore/ponerdi-play-upload.jks`(인증서 `ponerdi-play-upload-certificate.pem`, SHA-256 `04:B4:53:92:…:55:B5`, G드라이브 백업 완료)를
+    등록하고, 승인 뒤 play flavor에 그 키를 연결합니다. 앱 서명 키는 바뀌지 않으므로 사용자 영향은 없습니다.
+- 대안으로 본 것: Play 업로드 키만 별도(재설정 승인 대기), 앱 서명 키까지 Play 전용(채널을 바꿀 때마다 삭제·재설치·QR 재연결 필요).
 

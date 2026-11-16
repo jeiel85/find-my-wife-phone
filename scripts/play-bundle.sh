@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Google Play AAB (play flavor, signed with the Play upload key — DECISIONS.md D-10).
+# Builds the Google Play AAB (play flavor: no self-updater; same release key — DECISIONS.md D-10).
 #
 #   scripts/play-bundle.sh 0.3.0
 #
@@ -17,4 +17,4 @@ mkdir -p dist
 OUT="dist/ponerdi-play-$VER.aab"
 cp android/app/build/outputs/bundle/playRelease/app-play-release.aab "$OUT"
 echo "✓ $OUT"
-keytool -printcert -jarfile "$OUT" | grep -m1 SHA256 | sed 's/^\s*/  upload key /'
+keytool -printcert -jarfile "$OUT" | grep -m1 SHA256 | sed 's/^\s*/  signer /'

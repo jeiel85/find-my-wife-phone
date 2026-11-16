@@ -108,7 +108,7 @@ npx wrangler deploy
 
 # 2) 앱 — Firebase 콘솔에서 받은 google-services.json을 android/app/에
 cd android && ./gradlew testGithubDebugUnitTest assembleGithubDebug -Papp.relayUrl=https://<your-worker>.workers.dev
-# Play용 AAB: ./gradlew bundlePlayRelease (play-upload-signing.properties 필요, DECISIONS.md D-10)
+# Play용 AAB: ./gradlew bundlePlayRelease (DECISIONS.md D-10)
 ```
 
 `google-services.json`·서비스 계정 키·릴리스 키스토어는 `.gitignore`로 막혀 있어 저장소에 들어가지 않습니다.
