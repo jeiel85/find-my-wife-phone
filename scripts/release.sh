@@ -17,9 +17,9 @@ TAG="v$VER"
 git fetch -q origin && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "✗ main is not in sync with origin/main"; exit 1; }
 
 (cd relay && npm test --silent >/dev/null) && echo "✓ relay tests"
-(cd android && ./gradlew.bat --console=plain -q -Papp.version="$VER" testDebugUnitTest assembleRelease)
+(cd android && ./gradlew.bat --console=plain -q -Papp.version="$VER" testGithubDebugUnitTest testPlayDebugUnitTest assembleGithubRelease)
 mkdir -p dist
-cp android/app/build/outputs/apk/release/app-release.apk dist/find-my-wife-phone.apk
+cp android/app/build/outputs/apk/github/release/app-github-release.apk dist/find-my-wife-phone.apk
 SHA=$(sha256sum dist/find-my-wife-phone.apk | cut -d' ' -f1)
 
 NOTES=$(mktemp)

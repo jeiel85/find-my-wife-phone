@@ -19,6 +19,8 @@ val relayUrl = providers.gradleProperty("app.relayUrl")
     .orElse("https://find-my-wife-phone-relay.jeiel85.workers.dev").get()
 
 // --- Release signing (values live in release-signing.properties, never in git) ---------------
+// One key for both channels (DECISIONS.md D-10): it signs the GitHub APK and is the Play upload
+// key; Play's app signing key is the same key (D-9), so installs from either channel interchange.
 val signingProps = Properties().apply {
     rootProject.file("release-signing.properties").takeIf { it.exists() }?.inputStream()?.use(::load)
 }
@@ -33,14 +35,14 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "io.github.jeiel85.findmywifephone"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         // Kotlin namespace stays io.github.jeiel85.findmywifephone; the app id is what Android and
         // Play see (renamed for Play in v0.3.0 — DECISIONS.md D-9).
         applicationId = "com.jeiel85.ponerdi"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersion
         buildConfigField("String", "RELAY_URL", "\"$relayUrl\"")
@@ -56,6 +58,14 @@ android {
                 keyPassword = signing("FMWP_RELEASE_KEY_PASSWORD")
             }
         }
+    }
+
+    // Separate builds per store (DECISIONS.md D-10): same applicationId and signing key,
+    // but only the github build carries the self-updater and its install permissions.
+    flavorDimensions += "channel"
+    productFlavors {
+        create("github") { dimension = "channel" }
+        create("play") { dimension = "channel" }
     }
 
     buildTypes {

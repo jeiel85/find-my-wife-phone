@@ -2,7 +2,6 @@ package io.github.jeiel85.findmywifephone.ui
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings as AndroidSettings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,12 +28,10 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FlashlightOn
-import androidx.compose.material.icons.rounded.InstallMobile
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.AlertDialog
@@ -54,7 +51,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,10 +75,6 @@ import io.github.jeiel85.findmywifephone.data.Peer
 import io.github.jeiel85.findmywifephone.data.RING_LENGTHS
 import io.github.jeiel85.findmywifephone.data.ThemeMode
 import io.github.jeiel85.findmywifephone.ring.RingService
-import io.github.jeiel85.findmywifephone.update.UpdateState
-import io.github.jeiel85.findmywifephone.update.UpdateWorker
-import io.github.jeiel85.findmywifephone.update.Updater
-import kotlinx.coroutines.launch
 import java.util.Calendar
 
 private val LOCATION_CHOICES = listOf(
@@ -232,68 +224,6 @@ private fun ProfileCard(name: String, familyCount: Int, snoozeUntil: Long, onEdi
     }
 }
 
-// ---- update ----------------------------------------------------------------------------------
-
-@Composable
-private fun UpdateSection(autoUpdate: Boolean) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val state by Updater.state.collectAsStateWithLifecycle()
-    val tick = rememberResumeTick()
-    val canInstall = remember(tick) { context.packageManager.canRequestPackageInstalls() }
-    val checkedAt = remember(tick, state) { Updater.lastCheckedAt(context) }
-
-    if (!Updater.supported) {
-        ListRow("이 빌드는 직접 업데이트해요", "디버그 빌드는 자동 업데이트를 하지 않아요 · v${BuildConfig.VERSION_NAME}",
-            Icons.Rounded.SystemUpdate, P.c.inkSoft)
-        return
-    }
-    ToggleRow("자동 업데이트", "하루 두 번 새 버전을 확인하고 설치해요. 울리는 중에는 기다려요.",
-        Icons.Rounded.SystemUpdate, P.c.sage, autoUpdate) { on ->
-        Hub.store.updateSettings { it.copy(autoUpdate = on) }
-        UpdateWorker.schedule(context, on)
-    }
-    val (title, sub) = when (val s = state) {
-        UpdateState.Idle -> "현재 버전 ${BuildConfig.VERSION_NAME}" to "마지막 확인: ${relativeTime(checkedAt)}"
-        UpdateState.Checking -> "확인하는 중…" to "GitHub에서 최신 릴리스를 보고 있어요"
-        UpdateState.UpToDate -> "최신 버전이에요" to "${BuildConfig.VERSION_NAME} · 마지막 확인 ${relativeTime(checkedAt)}"
-        is UpdateState.Available -> "새 버전 ${s.release.version}이 있어요" to "지금 ${BuildConfig.VERSION_NAME}"
-        is UpdateState.Downloading -> "내려받는 중 ${s.percent}%" to "새 버전 ${s.release.version}"
-        is UpdateState.Installing -> "설치하는 중…" to "잠시 뒤 앱이 다시 시작돼요"
-        is UpdateState.NeedsConfirm -> "설치를 허락해 주세요" to "Android가 한 번 확인을 요청해요"
-        is UpdateState.Failed -> s.reason to "현재 ${BuildConfig.VERSION_NAME} · 다시 시도해 주세요"
-    }
-    val busy = state is UpdateState.Checking || state is UpdateState.Downloading || state is UpdateState.Installing
-    ListRow(title, sub, Icons.Rounded.InstallMobile, if (state is UpdateState.Failed) P.c.danger else P.c.indigo) {
-        when (val s = state) {
-            is UpdateState.Available -> SmallButton("설치") { scope.launch { Updater.run(context, userInitiated = true) } }
-            is UpdateState.NeedsConfirm -> SmallButton("설치") {
-                runCatching { context.startActivity(s.confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            }
-            else -> SmallButton("확인", enabled = !busy) { scope.launch { Updater.run(context, userInitiated = true) } }
-        }
-    }
-    val notes = when (val s = state) {
-        is UpdateState.Available -> s.release.notes
-        is UpdateState.Downloading -> s.release.notes
-        is UpdateState.NeedsConfirm -> s.release.notes
-        else -> ""
-    }
-    if (notes.isNotBlank()) {
-        Text(notes.take(600), style = MaterialTheme.typography.bodyMedium, color = P.c.inkSoft,
-            modifier = Modifier.padding(start = 58.dp, end = 8.dp, bottom = 10.dp))
-    }
-    if (!canInstall) {
-        ListRow("업데이트 설치 허용", "처음 한 번, 이 앱이 새 버전을 설치할 수 있게 해 주세요",
-            Icons.Rounded.Security, P.c.amber, onClick = {
-                context.startActivity(Intent(AndroidSettings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}")))
-            }) {
-            Text("설정", color = P.c.coral, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        }
-    }
-}
-
 // ---- building blocks -------------------------------------------------------------------------
 
 @Composable
@@ -308,10 +238,10 @@ private fun Note(text: String) =
     Text(text, fontSize = 13.sp, color = P.c.inkSoft, modifier = Modifier.padding(start = 6.dp, top = 8.dp))
 
 @Composable
-private fun Chevron() = Icon(Icons.Rounded.ChevronRight, null, tint = P.c.inkSoft)
+internal fun Chevron() = Icon(Icons.Rounded.ChevronRight, null, tint = P.c.inkSoft)
 
 @Composable
-private fun ToggleRow(title: String, subtitle: String, icon: ImageVector, tint: androidx.compose.ui.graphics.Color,
+internal fun ToggleRow(title: String, subtitle: String, icon: ImageVector, tint: androidx.compose.ui.graphics.Color,
                       checked: Boolean, onChange: (Boolean) -> Unit) {
     ListRow(title, subtitle, icon, tint, onClick = { onChange(!checked) }) {
         Spacer(Modifier.width(8.dp))
@@ -321,7 +251,7 @@ private fun ToggleRow(title: String, subtitle: String, icon: ImageVector, tint: 
 }
 
 @Composable
-private fun SmallButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun SmallButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Spacer(Modifier.width(8.dp))
     Box(
         Modifier.clip(RoundedCornerShape(50))

@@ -90,6 +90,10 @@ design/    프로토콜 문서, 아이콘·알림음 생성 스크립트
 
 릴리스마다 APK의 SHA-256을 릴리스 노트에 적습니다. 그다음부터는 앱이 알아서 업데이트합니다(설정 → 업데이트).
 
+**GitHub APK와 Google Play 버전**은 따로 만든 빌드입니다. GitHub APK는 앱이 스스로 업데이트하고, Play 버전은 Play 스토어가 업데이트합니다
+(Play 버전에는 자체 업데이트 기능과 설치 권한이 없습니다). 둘은 같은 앱 서명을 쓰므로 한쪽에서 다른 쪽으로 **덮어 설치**할 수 있고
+연결·설정도 그대로 남습니다. 직접 빌드한 APK처럼 서명이 다른 빌드는 덮어 설치할 수 없으니, 바꾸려면 지우고 다시 설치한 뒤 QR로 다시 연결하세요.
+
 ## 직접 빌드하기
 
 중계 서버와 Firebase 프로젝트는 배포자마다 따로 둡니다.
@@ -103,7 +107,8 @@ npx wrangler secret put FCM_SERVICE_ACCOUNT < service-account.json   # Firebase 
 npx wrangler deploy
 
 # 2) 앱 — Firebase 콘솔에서 받은 google-services.json을 android/app/에
-cd android && ./gradlew testDebugUnitTest assembleDebug -Papp.relayUrl=https://<your-worker>.workers.dev
+cd android && ./gradlew testGithubDebugUnitTest assembleGithubDebug -Papp.relayUrl=https://<your-worker>.workers.dev
+# Play용 AAB: ./gradlew bundlePlayRelease (DECISIONS.md D-10)
 ```
 
 `google-services.json`·서비스 계정 키·릴리스 키스토어는 `.gitignore`로 막혀 있어 저장소에 들어가지 않습니다.

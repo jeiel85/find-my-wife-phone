@@ -26,7 +26,7 @@ import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.PairOffer
 import io.github.jeiel85.findmywifephone.locate.LocateService
 import io.github.jeiel85.findmywifephone.ring.RingService
-import io.github.jeiel85.findmywifephone.update.Updater
+import io.github.jeiel85.findmywifephone.update.SelfUpdate
 
 class MainActivity : ComponentActivity() {
 
@@ -46,11 +46,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        Updater.appVisible = true
+        SelfUpdate.onAppVisible(true)
     }
 
     override fun onStop() {
-        Updater.appVisible = false
+        SelfUpdate.onAppVisible(false)
         super.onStop()
     }
 
