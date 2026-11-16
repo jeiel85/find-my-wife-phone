@@ -73,6 +73,9 @@ class History(context: Context) {
         })
     }
 
+    fun outcome(reqId: String, direction: Direction): String? =
+        _entries.value.firstOrNull { it.reqId == reqId && it.direction == direction }?.outcome
+
     @Synchronized
     fun clearOutgoing() = save(_entries.value.filter { it.direction == Direction.IN })
 

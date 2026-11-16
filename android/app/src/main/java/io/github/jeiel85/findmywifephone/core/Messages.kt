@@ -66,6 +66,14 @@ enum class RingState(val wire: String) {
 
     companion object {
         fun of(wire: String?) = entries.firstOrNull { it.wire == wire } ?: ERROR
+        fun ofOrNull(wire: String?) = entries.firstOrNull { it.wire == wire }
+
+        /**
+         * Whether a state reported by the ringing phone may replace [current]. Updates can arrive late or
+         * out of order (FCM keeps no order), so a COUNTDOWN/RINGING sent before our cancel landed must not
+         * bring an ended request (our own STOPPED included) back to life. A later end state still wins.
+         */
+        fun accepts(current: RingState?, incoming: RingState) = current?.terminal != true || incoming.terminal
     }
 }
 

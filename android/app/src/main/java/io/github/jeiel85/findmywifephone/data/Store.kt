@@ -232,6 +232,28 @@ class Store(context: Context) {
         return true
     }
 
+    // ---- cancelled ring requests ---------------------------------------------------------
+
+    /**
+     * A ring-cancel can reach this phone before its ring (FCM keeps no order), and the ring must then
+     * not start. Persisted in case the process is killed between the two pushes. Keeps the last 50 ids.
+     */
+    @Synchronized
+    fun markCancelled(reqId: String) {
+        val arr = JSONArray(prefs.getString("cancelled", "[]"))
+        for (i in 0 until arr.length()) if (arr.getString(i) == reqId) return
+        val next = JSONArray()
+        for (i in maxOf(0, arr.length() - 49) until arr.length()) next.put(arr.getString(i))
+        next.put(reqId)
+        prefs.edit().putString("cancelled", next.toString()).commit()
+    }
+
+    @Synchronized
+    fun wasCancelled(reqId: String): Boolean {
+        val arr = JSONArray(prefs.getString("cancelled", "[]"))
+        return (0 until arr.length()).any { arr.getString(it) == reqId }
+    }
+
     // ---- sound state to restore after ringing --------------------------------------------
 
     fun saveSoundRestore(json: JSONObject?) {

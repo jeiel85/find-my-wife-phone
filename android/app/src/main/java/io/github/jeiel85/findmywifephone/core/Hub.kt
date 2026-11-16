@@ -21,7 +21,9 @@ import io.github.jeiel85.findmywifephone.net.Relay
 import io.github.jeiel85.findmywifephone.net.RelayResult
 import io.github.jeiel85.findmywifephone.ring.RingService
 import io.github.jeiel85.findmywifephone.ui.Notifier
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +61,12 @@ data class Outgoing(
     val result: Msg.LocateResult? = null,
     /** No answer at all within [NO_RESPONSE_MS] after the relay accepted the request. */
     val noResponse: Boolean = false,
+    /** "그만 울리기" pressed; the cancel is on its way to the relay. */
+    val stopping: Boolean = false,
+    /** The cancel could not be sent, so the other phone may still ring. The stop button stays for a retry. */
+    val stopError: String? = null,
+    /** RING only: what the relay said about the ring itself, which a stop has to wait for (see Hub.stopRing). */
+    val ringSend: Deferred<RelayResult>? = null,
 ) {
     val active get() = sendError == null && !noResponse && when (kind) {
         RequestKind.RING -> ring == null || !ring.terminal
@@ -265,13 +273,20 @@ object Hub {
         val peer = store.peer(peerId) ?: return
         val reqId = Msg.newId()
         val now = System.currentTimeMillis()
-        _outgoing.update { it + (peerId to Outgoing(kind, reqId, now)) }
+        val ringSend = if (kind == RequestKind.RING) CompletableDeferred<RelayResult>() else null
+        _outgoing.update { it + (peerId to Outgoing(kind, reqId, now, ringSend = ringSend)) }
         history.add(HistoryEntry(reqId, now, peer.id, peer.name, Direction.OUT,
             if (kind == RequestKind.RING) Kind.RING else Kind.LOCATE, "sent"))
         scope.launch {
             val msg = if (kind == RequestKind.RING) Msg.Ring(reqId, myStatus()) else Msg.Locate(reqId, myStatus())
             // Short TTL: a ring that arrives minutes later is worse than none.
-            val r = send(peer, msg, ttlSec = 60)
+            val r = try {
+                send(peer, msg, ttlSec = 60)
+            } catch (e: Exception) {
+                ringSend?.complete(RelayResult.Fail(0, "error")) // never leave a pending stop hanging
+                throw e
+            }
+            ringSend?.complete(r)
             updateOutgoing(peerId, reqId) {
                 if (r is RelayResult.Fail) it.copy(sendError = r.code) else it.copy(sent = true)
             }
@@ -287,12 +302,49 @@ object Hub {
         }
     }
 
+    /**
+     * "그만 울리기" / "취소". The request only counts as stopped once the relay has taken the cancel;
+     * if that fails the screen says so and keeps the button, because the other phone may still ring.
+     */
     fun stopRing(peerId: String) {
         val out = _outgoing.value[peerId] ?: return
-        if (out.kind != RequestKind.RING) return
-        updateOutgoing(peerId, out.reqId) { it.copy(ring = RingState.STOPPED) }
-        history.update(out.reqId, Direction.OUT, RingState.STOPPED.wire)
-        reply(peerId, Msg.RingCancel(out.reqId, myStatus()), ttlSec = 120)
+        if (out.kind != RequestKind.RING || !out.active || out.stopping) return
+        val peer = store.peer(peerId) ?: return
+        val reqId = out.reqId
+        updateOutgoing(peerId, reqId) { it.copy(stopping = true, stopError = null) }
+        scope.launch {
+            // Pressed right after "울리기": let the ring reach the relay first so the cancel does not
+            // overtake it there. FCM can still swap them, which the receiver handles (Store.wasCancelled).
+            // Tied to this ring, not to the screen: "위치 보기" may replace the outgoing entry meanwhile.
+            val sent = out.ringSend?.await()
+            if (sent is RelayResult.Fail && sent.status != 0) {
+                // The relay refused the ring, so it never went out. A transport failure (status 0) proves
+                // nothing — the relay may have forwarded it before the response was lost — so cancel anyway.
+                updateOutgoing(peerId, reqId) { it.copy(stopping = false) }
+                return@launch
+            }
+            val r = send(peer, Msg.RingCancel(reqId, myStatus()), ttlSec = 120)
+            if (r is RelayResult.Fail) {
+                Log.w(TAG, "ring-cancel failed: ${r.code}")
+                updateOutgoing(peerId, reqId) { it.copy(stopping = false, stopError = r.code) }
+                return@launch
+            }
+            updateOutgoing(peerId, reqId) {
+                // An end state may have arrived meanwhile (e.g. "찾았어요"); it stays.
+                if (it.ring?.terminal == true) it.copy(stopping = false)
+                else it.copy(stopping = false, stopError = null, ring = RingState.STOPPED, noResponse = false)
+            }
+            // Our own stop must not replace an end state the other phone reported meanwhile (e.g. FOUND).
+            if (RingState.ofOrNull(history.outcome(reqId, Direction.OUT))?.terminal != true) {
+                history.update(reqId, Direction.OUT, RingState.STOPPED.wire)
+            }
+        }
+    }
+
+    /** Records a ring outcome unless the entry already holds an end state that [state] must not undo. */
+    private fun updateHistoryRing(reqId: String, state: RingState) {
+        val current = RingState.ofOrNull(history.outcome(reqId, Direction.OUT))
+        if (RingState.accepts(current, state)) history.update(reqId, Direction.OUT, state.wire)
     }
 
     fun dismissOutgoing(peerId: String) = _outgoing.update { it - peerId }
@@ -368,11 +420,17 @@ object Hub {
             }.also { if (msg.ack) _pairEvents.tryEmit(PairEvent.Paired(msg.name.ifBlank { peer.name })) }
             is Msg.Status -> Unit // status already applied
             is Msg.Ring -> onRingRequest(peer, msg, now)
-            is Msg.RingCancel -> RingService.cancel(context, msg.reqId)
+            is Msg.RingCancel -> {
+                // Remember it first: the ring itself may still be on its way (see onRingRequest, RingService.begin).
+                store.markCancelled(msg.reqId)
+                RingService.cancel(context, msg.reqId)
+            }
             is Msg.Locate -> onLocateRequest(peer, msg, now)
             is Msg.RingUpdate -> {
-                updateOutgoing(peer.id, msg.reqId) { it.copy(ring = msg.state, noResponse = false) }
-                if (msg.state.terminal || msg.state == RingState.RINGING) history.update(msg.reqId, Direction.OUT, msg.state.wire)
+                updateOutgoing(peer.id, msg.reqId) {
+                    if (RingState.accepts(it.ring, msg.state)) it.copy(ring = msg.state, noResponse = false) else it
+                }
+                if (msg.state.terminal || msg.state == RingState.RINGING) updateHistoryRing(msg.reqId, msg.state)
             }
             is Msg.LocateUpdate -> {
                 updateOutgoing(peer.id, msg.reqId) { it.copy(locate = msg.state, noResponse = false) }
@@ -394,6 +452,11 @@ object Hub {
         history.add(HistoryEntry(msg.reqId, now, peer.id, peer.name, Direction.IN, Kind.RING, "received"))
         if (now - msg.ts > MAX_REQUEST_AGE_MS) {
             history.update(msg.reqId, Direction.IN, "late")
+            return
+        }
+        if (store.wasCancelled(msg.reqId)) {
+            // Its cancel overtook it. The requester already shows "멈췄어요"; nothing to send back.
+            history.update(msg.reqId, Direction.IN, RingState.STOPPED.wire)
             return
         }
         val status = myStatus()
