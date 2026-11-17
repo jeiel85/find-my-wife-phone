@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>포너디 개인정보처리방침</title>
+  <meta name="description" content="포너디(com.jeiel85.ponerdi) 개인정보처리방침">
+  <link rel="icon" href="../assets/icon-192.png">
+  <style>
+    :root { --bg: #f4f5ff; --card: #ffffff; --line: #dfe2f3; --text: #1f2235; --muted: #5c6078; --accent: #3340a8; --coral: #e2574a; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.75; }
+    main { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; }
+    h1 { font-size: 1.9rem; margin-bottom: 4px; }
+    .meta { color: var(--muted); font-size: .9rem; margin-bottom: 28px; }
+    h2 { font-size: 1.2rem; margin: 36px 0 12px; color: var(--coral); }
+    p + p { margin-top: 10px; }
+    ul { padding-left: 1.2rem; margin: 8px 0; }
+    li + li { margin-top: 6px; }
+    .note { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .93rem; background: var(--card); }
+    th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; }
+    a { color: var(--accent); }
+    code { font-family: Consolas, monospace; font-size: .88em; }
+    @media (max-width: 560px) { table, thead, tbody, tr, th, td { display: block; } thead { display: none; } td { border: none; padding: 2px 8px; } tr { border-bottom: 1px solid var(--line); padding: 10px 0; } td:first-child { font-weight: 600; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>포너디 개인정보처리방침</h1>
+  <p class="meta">시행일 2026년 11월 17일 · 대상: 포너디 Android 앱(<code>com.jeiel85.ponerdi</code>) — Google Play 버전과 GitHub에서 받은 APK 버전</p>
+
+  <div class="note">
+    <strong>요약</strong> — 포너디는 QR로 직접 연결한 가족 폰끼리만 울리기·위치 요청을 주고받습니다.
+    위치·이름·배터리·요청 내용은 두 폰만 아는 키로 종단 암호화되어, 개발자가 운영하는 중계 서버도 Google도 읽을 수 없습니다.
+    광고·분석·사용 기록 수집이 없습니다.
+  </div>
+
+  <h2>1. 누가 무엇을 처리하나요</h2>
+  <p>포너디는 개인 개발자(Google Play 개발자명 EL Studio)가 만든 오픈소스(MIT) 앱입니다. 소스 코드는
+    <a href="https://github.com/jeiel85/find-my-wife-phone">GitHub</a>에 공개되어 있습니다.
+    개발자는 아래 3번의 최소한의 연결 정보만 중계 서버에 보관하며, 어떤 정보도 판매하거나 광고에 쓰지 않습니다.</p>
+
+  <h2>2. 연결한 상대 폰으로 보내는 정보 (종단 암호화)</h2>
+  <p>아래 정보는 사용자가 QR로 연결한 상대 폰에만 전달됩니다. 연결할 때 QR 안의 일회용 비밀값으로 두 폰만 아는 키를 만들고
+    (P-256 ECDH + HKDF), 모든 메시지를 AES-256-GCM으로 암호화합니다. 중간의 중계 서버와 Google(FCM)은 내용을 읽을 수 없습니다.</p>
+  <table>
+    <thead><tr><th>정보</th><th>언제</th><th>왜</th></tr></thead>
+    <tbody>
+      <tr><td>내가 정한 표시 이름, 기기 이름(또는 모델명)</td><td>연결할 때, 이름을 바꿀 때</td><td>상대 화면에 누구의 폰인지 보여 주기 위해</td></tr>
+      <tr><td>배터리 잔량, 요청 받지 않기 상태</td><td>요청에 답할 때</td><td>상대가 내 폰 상태를 알 수 있도록</td></tr>
+      <tr><td>울리기 요청과 진행 상태(곧 울려요, 울리는 중, 찾았어요, 거절 등)</td><td>요청을 보내거나 받을 때</td><td>요청한 사람에게 진행 상황을 보여 주기 위해</td></tr>
+      <tr><td>위치(위도·경도·정확도·측정 시각)</td><td>상대가 위치를 요청했고, 내가 고른 위치 정책이 허용할 때만 한 번</td><td>요청한 가족에게 내 폰의 위치를 보여 주기 위해</td></tr>
+    </tbody>
+  </table>
+  <p>위치 정책은 받는 사람이 정합니다: 알리고 10초 뒤 보내기(기본) / 내가 허용할 때만 / 보내지 않기.
+    위치를 보낼 때마다 알림이 뜨고, 받은 요청은 기록에 남습니다.</p>
+
+  <h2>3. 중계 서버가 보관하는 정보</h2>
+  <p>잠든 폰을 깨우려면 서버가 필요해서, 개발자가 Cloudflare Workers와 Cloudflare D1으로 작은 중계 서버를 운영합니다.
+    서버가 보관하는 것은 다음뿐입니다.</p>
+  <ul>
+    <li>앱이 처음 실행될 때 만든 무작위 기기 ID와 인증 토큰의 해시</li>
+    <li>폰을 깨우는 데 쓰는 FCM 푸시 토큰</li>
+    <li>어떤 기기 ID끼리 연결되어 있는지</li>
+    <li>연결용 QR 초대(비밀값의 해시, 10분 뒤 만료되어 삭제)</li>
+    <li>남용 방지용 요청 횟수 카운터(하루 뒤 삭제)</li>
+  </ul>
+  <p>메시지는 암호문 그대로 FCM에 넘기기만 하고 서버에 저장하지 않습니다. 이름·전화번호·이메일·계정은 받지 않습니다.
+    서버는 요청을 처리하면서 접속 IP 주소를 볼 수 있지만 따로 저장하지 않습니다(Cloudflare 인프라 자체의 처리에는
+    <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare 개인정보처리방침</a>이 적용됩니다).</p>
+
+  <h2>4. 거치는 외부 서비스</h2>
+  <ul>
+    <li><strong>Firebase Cloud Messaging(Google)</strong> — 중계 서버가 상대 폰을 깨우는 데 씁니다. 전달하는 메시지는 종단 암호화된 상태입니다.
+      FCM은 푸시 전달을 위해 기기의 Firebase 설치 ID와 푸시 토큰을 처리합니다.
+      <a href="https://firebase.google.com/support/privacy">Firebase 개인정보 보호</a>가 적용됩니다.</li>
+    <li><strong>OpenStreetMap 지도 타일</strong> — 받은 위치를 화면의 작은 지도에 그릴 때, 그 주변 지도 조각을
+      <code>tile.openstreetmap.org</code>에서 받아옵니다. 이때 OpenStreetMap 서버는 내 IP 주소와 요청한 지도 영역(대략적인 위치)을 봅니다.
+      위치가 화면에 표시될 때만 요청합니다. <a href="https://osmfoundation.org/wiki/Privacy_Policy">OSMF 개인정보처리방침</a>이 적용됩니다.</li>
+    <li><strong>GitHub(APK 버전만)</strong> — GitHub에서 받은 APK 버전은 하루 두 번 <code>api.github.com</code>에서 새 버전을 확인하고 내려받습니다.
+      설정에서 끌 수 있습니다. Google Play 버전에는 이 기능이 없습니다.</li>
+    <li><strong>Google Play</strong> — Play 버전의 설치·업데이트에는 Google Play의 정책이 적용됩니다.</li>
+  </ul>
+
+  <h2>5. 휴대폰에만 저장되는 정보</h2>
+  <ul>
+    <li>연결한 가족 목록(이름, 기기 이름, 암호화 키) — 키는 Android 키 저장소의 키로 감싸 보관합니다.</li>
+    <li>기록 — 누가 언제 내 폰을 울리고 위치를 요청했는지. 받은 요청 기록은 앱 안에서 지울 수 없습니다(몰래 찾지 못하게 하기 위해서).</li>
+    <li>설정, 울리기 전의 볼륨·방해 금지 상태(찾은 뒤 원래대로 돌려놓기 위해)</li>
+  </ul>
+  <p>앱 데이터는 Android 백업·기기 이전에서 제외됩니다.</p>
+
+  <h2>6. 권한을 쓰는 이유</h2>
+  <table>
+    <thead><tr><th>권한</th><th>쓰는 곳</th></tr></thead>
+    <tbody>
+      <tr><td>위치(앱을 사용하지 않을 때 포함)</td><td>가족이 내 위치를 요청했을 때, 앱을 열어 두지 않은 상태에서도 위치 정책에 따라 한 번 측정해 그 가족에게만 보냅니다. 위치를 계속 추적하거나 기록하지 않습니다.</td></tr>
+      <tr><td>알림, 전체 화면 알림</td><td>요청이 오면 잠금 화면 위에 10초 거절 창과 '찾았어요' 화면을 띄웁니다.</td></tr>
+      <tr><td>방해 금지 접근</td><td>방해 금지 중에도 울리고, 찾은 뒤 원래 상태로 돌려놓습니다.</td></tr>
+      <tr><td>근처 기기(블루투스 광고)</td><td>울리는 동안에만 1분마다 바뀌는 8바이트 값을 내보내, 연결된 상대 폰이 가까운 정도를 보여 줍니다. 이름이나 기기 정보는 담지 않습니다.</td></tr>
+      <tr><td>카메라</td><td>연결용 QR 코드를 읽는 데만 씁니다. 영상은 폰 안에서만 처리하고 저장·전송하지 않습니다.</td></tr>
+      <tr><td>배터리 최적화 제외, 부팅 후 실행</td><td>절전 중에도 요청을 놓치지 않고, 재부팅 뒤에도 소리 설정 복원을 마치기 위해 씁니다.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. 삭제와 선택</h2>
+  <ul>
+    <li>설정에서 연결을 해제하면 중계 서버의 연결 정보가 지워지고, 그 뒤로는 서로 요청을 보낼 수 없습니다.</li>
+    <li>앱을 삭제하면 휴대폰에 저장된 모든 정보(연결, 키, 기록)가 지워집니다.</li>
+    <li>앱을 삭제해도 중계 서버에는 무작위 기기 ID와 푸시 토큰이 남을 수 있습니다. 이 값은 이름·전화번호·계정과 연결되지 않고 다른 기기와의 연결도 없습니다.
+      지우기를 원하면 아래 문의처로 알려 주세요.</li>
+    <li>위치 정책(알리고 보내기 / 허용할 때만 / 보내지 않기)과 요청 받지 않기는 언제든 설정에서 바꿀 수 있습니다.</li>
+  </ul>
+
+  <h2>8. 아동</h2>
+  <p>포너디는 가족끼리 쓰는 성인용 도구이며 만 13세 미만 아동을 대상으로 하지 않습니다.</p>
+
+  <h2>9. 변경</h2>
+  <p>이 방침이 바뀌면 이 페이지를 고치고 시행일을 갱신합니다. 변경 내역은
+    <a href="https://github.com/jeiel85/find-my-wife-phone/commits/main/docs/privacy/index.html">GitHub 기록</a>에서 볼 수 있습니다.</p>
+
+  <h2>10. 문의</h2>
+  <p>이메일 <a href="mailto:jeiel85@gmail.com">jeiel85@gmail.com</a> ·
+    <a href="https://github.com/jeiel85/find-my-wife-phone/issues">GitHub 이슈</a></p>
+</main>
+</body>
+</html>
