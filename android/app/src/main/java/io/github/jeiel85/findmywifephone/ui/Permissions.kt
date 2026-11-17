@@ -21,11 +21,14 @@ import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.TravelExplore
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -101,6 +104,18 @@ fun PermissionList(policy: LocationPolicy) {
     val bgLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
     val nearby = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
     val checks = remember(tick, refresh, policy) { Checks.all(context, policy) }
+    var disclose by remember { mutableStateOf<String?>(null) }
+
+    disclose?.let { key ->
+        LocationDisclosure(background = key == "bglocation", onDismiss = { disclose = null }) {
+            disclose = null
+            if (key == "bglocation" && checks.first { it.key == "location" }.granted) {
+                bgLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            } else {
+                location.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            }
+        }
+    }
 
     fun open(intent: Intent) {
         runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure {
@@ -126,12 +141,8 @@ fun PermissionList(policy: LocationPolicy) {
                             "dnd" -> open(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
                             "battery" -> open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                                 Uri.parse("package:${context.packageName}")))
-                            "location" -> location.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                            "bglocation" -> if (checks.first { it.key == "location" }.granted) {
-                                bgLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                            } else {
-                                location.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                            }
+                            // Play's prominent-disclosure rule: explain location use before the system prompt.
+                            "location", "bglocation" -> disclose = c.key
                         }
                     }
                 },
@@ -141,4 +152,26 @@ fun PermissionList(policy: LocationPolicy) {
             }
         }
     }
+}
+
+/** Shown right before the system location prompt (Google Play prominent disclosure for background location). */
+@Composable
+private fun LocationDisclosure(background: Boolean, onDismiss: () -> Unit, onAgree: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("위치 정보 사용 안내") },
+        text = {
+            Text(
+                "포너디는 연결한 가족이 ‘위치 보기’를 요청하면, 앱이 닫혀 있거나 사용 중이 아닐 때에도 이 폰의 위치 정보를 " +
+                    "수집해 그 가족에게만 한 번 보내요.\n\n" +
+                    "• 보낼 때마다 알림이 뜨고, 기본 설정에서는 10초 안에 거절할 수 있어요.\n" +
+                    "• 위치는 두 폰만 아는 키로 암호화되어, 중계 서버와 개발자도 볼 수 없어요.\n" +
+                    "• 위치를 계속 추적하지 않아요. 보낸 위치는 두 폰의 기록에만 남아 지도로 다시 볼 수 있어요.\n" +
+                    "• 설정의 ‘위치 요청’에서 ‘보내지 않기’로 언제든 끌 수 있어요." +
+                    if (background) "\n\n다음 화면에서 ‘항상 허용’을 골라 주세요." else "",
+            )
+        },
+        confirmButton = { TextButton(onClick = onAgree) { Text("동의하고 계속") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("나중에") } },
+    )
 }
