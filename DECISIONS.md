@@ -90,7 +90,7 @@
 - 스토어마다 업데이트 방식이 달라 product flavor `channel`로 빌드를 나눕니다. 런타임에 설치 출처를 보고 끄지 않습니다.
   - `github`: GitHub Releases APK. 앱 자체 업데이트(D-7) 코드와 `REQUEST_INSTALL_PACKAGES`·`UPDATE_PACKAGES_WITHOUT_USER_ACTION`
     권한, `UpdateReceiver`는 `src/github`에만 있습니다.
-  - `play`: Google Play AAB. 업데이터·설치 권한·APK 다운로드 코드가 아예 없고(Play 정책), 업데이트는 Play가 합니다.
+  - `play`: Google Play AAB. 업데이터·설치 권한·APK 다운로드 코드가 아예 없고(Play 정책), 업데이트는 Play가 합니다(새 버전 알림만, D-11).
   - 공통 코드는 `update.SelfUpdate`(채널마다 구현)와 `ui.UpdateSection`만 부릅니다.
 - 서명(2026-11-16 결정): 두 채널 모두 **기존 릴리스 키 하나**로 서명합니다. 이 키가 GitHub APK 서명 키이자 Play 업로드 키이고,
   Play 앱 서명 키도 D-9대로 같은 키라 Play와 GitHub 설치본은 서로 덮어 설치할 수 있습니다(연결·설정 유지).
@@ -102,3 +102,13 @@
     등록하고, 승인 뒤 play flavor에 그 키를 연결합니다. 앱 서명 키는 바뀌지 않으므로 사용자 영향은 없습니다.
 - 대안으로 본 것: Play 업로드 키만 별도(재설정 승인 대기), 앱 서명 키까지 Play 전용(채널을 바꿀 때마다 삭제·재설치·QR 재연결 필요).
 
+## D-11 Play 빌드의 새 버전 알림: Play 인앱 업데이트 API로 확인만, 설치는 Play 스토어로 (2026-11-18)
+
+- Play 빌드도 새 버전이 나온 걸 알려 줍니다. `com.google.android.play:app-update-ktx`(play flavor에만)의 `requestAppUpdateInfo()`로
+  이 사용자에게 열린 트랙(비공개 테스트 포함)에 더 높은 versionCode가 있는지 보고, 있으면 설정 → 업데이트와 알림(버전마다 한 번)으로
+  알려 누르면 `market://details?id=…`(Play 스토어 앱이 없으면 웹)으로 보냅니다. GitHub 빌드의 자체 업데이트(D-7)를 Play에서는 이것이 대신합니다.
+- 확인 시점: 앱 시작, 6시간 넘게 지나 다시 열 때, WorkManager 12시간 주기(`StoreUpdateWorker`). 기존 설정 `autoUpdate`를 "새 버전 알림" 스위치로 씁니다.
+- 앱 안에서 바로 설치하는 인앱 업데이트 흐름(flexible/immediate)은 쓰지 않습니다. 찾기 앱이라 울림·위치 요청 중 재시작을 피해야 하고,
+  스토어 페이지로 보내는 쪽이 GitHub 빌드와 같은 "알리고 사용자가 고른다" 흐름이라 단순합니다. 설치 권한·APK 다운로드는 여전히 없습니다(D-10).
+- Play에서 받지 않은 설치본(직접 설치한 play 빌드·디버그)은 API가 실패하므로 백그라운드에선 조용히 넘어가고, "확인"을 누르면 이유를 보여 줍니다.
+- versionCode → 표시 버전은 `build.gradle.kts`의 `주×10000 + 부×100 + 수`를 거꾸로 풉니다. 이 공식을 바꾸면 `SelfUpdate.versionName`도 함께 바꿉니다.
