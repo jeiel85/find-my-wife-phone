@@ -134,6 +134,17 @@ object Notifier {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .build())
 
+    /** Play build: a newer version is on Play; [store] opens the app's Play Store page. */
+    fun storeUpdate(context: Context, version: String, store: Intent) = update(context, ID_INFO_BASE + 6,
+        NotificationCompat.Builder(context, CH_INFO)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("새 버전 $version 나왔어요")
+            .setContentText("탭해서 Play 스토어에서 업데이트하세요. 연결과 기록은 그대로 남아요.")
+            .setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(context, 6, store.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+            .build())
+
     fun updated(context: Context, version: String) =
         info(context, ID_INFO_BASE + 5, "$version 버전으로 업데이트했어요", "연결과 기록, 설정은 그대로예요.", MainActivity.SCREEN_SETTINGS)
 }
