@@ -65,8 +65,13 @@ object SelfUpdate {
         if (visible && System.currentTimeMillis() - lastCheckAt > RECHECK_MS) checkInBackground(ctx)
     }
 
-    /** App start and the first onStart arrive together; one quiet check at a time is enough. */
+    /**
+     * Quiet checks honor the "새 버전 알림" switch (README and privacy policy say it can be turned
+     * off); only the user's own "확인" tap asks Play when it is off. App start and the first onStart
+     * arrive together, so one quiet check at a time is enough.
+     */
     private fun checkInBackground(context: Context) {
+        if (!Hub.store.settings.value.autoUpdate) return
         if (!backgroundCheck.compareAndSet(false, true)) return
         scope.launch { try { check(context) } finally { backgroundCheck.set(false) } }
     }
