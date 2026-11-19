@@ -13,6 +13,8 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.InstallException
+import com.google.android.play.core.install.model.InstallErrorCode
 import com.google.android.play.core.install.model.UpdateAvailability
 import com.google.android.play.core.ktx.requestAppUpdateInfo
 import io.github.jeiel85.findmywifephone.core.Hub
@@ -85,11 +87,10 @@ object SelfUpdate {
         if (userInitiated) _state.value = UpdateState.Checking
         val next = runCatching {
             val info = AppUpdateManagerFactory.create(context.applicationContext).requestAppUpdateInfo()
-            if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE) UpdateState.StoreUpdate(versionName(info.availableVersionCode()))
-            else UpdateState.UpToDate
+            stateOf(info.updateAvailability(), info.availableVersionCode())
         }.getOrElse { e ->
             Log.i(TAG, "update check unavailable: ${e.message}")
-            if (userInitiated) UpdateState.Failed("Play 스토어에서 받은 앱에서만 확인할 수 있어요") else UpdateState.Idle
+            if (userInitiated) UpdateState.Failed(failureReason((e as? InstallException)?.errorCode)) else UpdateState.Idle
         }
         lastCheckAt = System.currentTimeMillis()
         _state.value = next
@@ -112,7 +113,23 @@ object SelfUpdate {
         Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${context.packageName}")).setPackage("com.android.vending")
 
     /** versionCode (major×10000 + minor×100 + patch, app/build.gradle.kts) back to "0.3.4". */
-    fun versionName(code: Int): String = "${code / 10000}.${code / 100 % 100}.${code % 100}"
+    fun versionName(code: Int): String = io.github.jeiel85.findmywifephone.core.versionName(code)
+
+    /** What Play's answer means for the settings row. */
+    fun stateOf(availability: Int, availableVersionCode: Int): UpdateState =
+        if (availability == UpdateAvailability.UPDATE_AVAILABLE) UpdateState.StoreUpdate(versionName(availableVersionCode))
+        else UpdateState.UpToDate
+
+    /**
+     * Play's InstallErrorCode for a failed check (null = not a Play error). Only "not installed from
+     * Play" means it can never work here; the rest are worth another try later.
+     */
+    fun failureReason(errorCode: Int?): String = when (errorCode) {
+        InstallErrorCode.ERROR_APP_NOT_OWNED, InstallErrorCode.ERROR_API_NOT_AVAILABLE ->
+            "Play 스토어에서 받은 앱에서만 확인할 수 있어요"
+        InstallErrorCode.ERROR_PLAY_STORE_NOT_FOUND -> "Play 스토어 앱이 없어 확인할 수 없어요"
+        else -> "Play 스토어에 연결하지 못했어요. 잠시 뒤 다시 확인해 주세요"
+    }
 }
 
 /** Twice a day: ask Play for a newer version and notify once per version (setting "새 버전 알림"). */

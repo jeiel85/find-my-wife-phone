@@ -33,18 +33,23 @@ const SA = JSON.stringify({
   private_key: privateKey.export({ type: "pkcs8", format: "pem" }),
 });
 
-let env, sent, fcmMode, clock;
+let env, sent, fcmMode, fcmCalls, clock;
 const deps = {
   now: () => clock,
+  sleep: async () => {},
   fetch: async (url, init) => {
     if (url.startsWith("https://oauth2.googleapis.com/")) {
       return new Response(JSON.stringify({ access_token: "at", expires_in: 3600 }), { status: 200 });
     }
     const msg = JSON.parse(init.body).message;
+    fcmCalls++;
     if (fcmMode === "dead") {
       return new Response(JSON.stringify({ error: { details: [{ errorCode: "UNREGISTERED" }] } }), { status: 404 });
     }
     if (fcmMode === "down") return new Response("{}", { status: 503 });
+    if (fcmMode === "flaky") { fcmMode = "ok"; return new Response("{}", { status: 500 }); }
+    if (fcmMode === "reset") { fcmMode = "ok"; throw new TypeError("connection reset"); }
+    if (fcmMode === "bad") return new Response("{}", { status: 400 });
     sent.push(msg);
     return new Response("{}", { status: 200 });
   },
@@ -52,7 +57,7 @@ const deps = {
 
 beforeEach(() => {
   env = { DB: d1(), FCM_SERVICE_ACCOUNT: SA };
-  sent = []; fcmMode = "ok"; clock = 1_800_000_000_000;
+  sent = []; fcmMode = "ok"; fcmCalls = 0; clock = 1_800_000_000_000;
   _resetFcmCacheForTests();
 });
 
@@ -225,3 +230,74 @@ test("FCM-reserved data keys are refused before sending", async () => {
   }
   assert.equal(called, false);
 });
+
+test("transient FCM failures are retried, permanent ones are not", async () => {
+  const { a, b } = await pair();
+  fcmCalls = 0;
+  fcmMode = "flaky";
+  assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 202);
+  assert.equal(fcmCalls, 2);
+  fcmCalls = 0;
+  fcmMode = "reset";
+  assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 202);
+  assert.equal(fcmCalls, 2);
+  fcmCalls = 0;
+  fcmMode = "down";
+  assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 502);
+  assert.equal(fcmCalls, 3); // first try + two retries
+  fcmCalls = 0;
+  fcmMode = "bad";
+  assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 502);
+  assert.equal(fcmCalls, 1);
+});
+
+test("message rate limit per sender across pairs", async () => {
+  const a = await register("a");
+  const peers = [];
+  for (const tag of "bcd") {
+    const p = await register(tag);
+    env.DB.raw.prepare("INSERT INTO links (a, b, created_at) VALUES (?, ?, 0)").run(a.deviceId, p.deviceId);
+    peers.push(p);
+  }
+  for (let i = 0; i < 120; i++) {
+    const to = peers[i % 3].deviceId;
+    assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to, env: ENV } })).status, 202);
+  }
+  // every pair is still under its own 60, but the sender has used up its 120
+  assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: peers[0].deviceId, env: ENV } })).status, 429);
+});
+
+test("cleanup drops dead and abandoned devices but keeps quiet paired ones", async () => {
+  const DAY = 86_400_000;
+  const { a, b } = await pair();      // paired, will stay quiet for a long time
+  const lonely = await register("l"); // never paired
+  const { a: c, b: d } = await pair2();
+  await call("POST", "/v1/invites", { token: lonely.token, body: { inviteId: "y".repeat(43) } });
+  // d's app was removed: FCM reported its token dead
+  env.DB.raw.prepare("UPDATE devices SET fcm_token = NULL WHERE id = ?").run(d.deviceId);
+
+  await cleanup(env, clock + 29 * DAY);
+  assert.equal(count("devices"), 5);
+
+  await cleanup(env, clock + 31 * DAY);
+  assert.deepEqual(ids(), [a.deviceId, b.deviceId, c.deviceId, lonely.deviceId].sort());
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS c FROM links WHERE a = ? OR b = ?").get(d.deviceId, d.deviceId).c, 0);
+
+  await cleanup(env, clock + 91 * DAY);
+  // lonely and c (its only pair is gone) are dropped; a and b are quiet but still paired
+  assert.deepEqual(ids(), [a.deviceId, b.deviceId].sort());
+  assert.equal(count("invites"), 0);
+  assert.equal(count("links"), 2);
+  assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 202);
+});
+
+function count(table) { return env.DB.raw.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get().c; }
+function ids() { return env.DB.raw.prepare("SELECT id FROM devices").all().map((r) => r.id).sort(); }
+async function pair2() {
+  const a = await register("c");
+  const b = await register("d");
+  const inv = "j".repeat(43);
+  assert.equal((await call("POST", "/v1/invites", { token: a.token, body: { inviteId: inv } })).status, 201);
+  assert.equal((await call("POST", `/v1/invites/${inv}/join`, { token: b.token, body: { pub: PUB, env: ENV } })).status, 200);
+  return { a, b };
+}

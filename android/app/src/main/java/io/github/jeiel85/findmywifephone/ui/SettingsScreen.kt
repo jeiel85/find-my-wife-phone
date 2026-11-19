@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.LocationOn
@@ -51,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,7 +76,9 @@ import io.github.jeiel85.findmywifephone.core.Registration
 import io.github.jeiel85.findmywifephone.data.Peer
 import io.github.jeiel85.findmywifephone.data.RING_LENGTHS
 import io.github.jeiel85.findmywifephone.data.ThemeMode
+import io.github.jeiel85.findmywifephone.net.RelayResult
 import io.github.jeiel85.findmywifephone.ring.RingService
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
 private val LOCATION_CHOICES = listOf(
@@ -93,6 +97,11 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
     var locationSheet by remember { mutableStateOf(false) }
     var editName by remember { mutableStateOf(false) }
     var unpair by remember { mutableStateOf<Peer?>(null) }
+    var removeRelay by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf(false) }
+    var removeError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val registration by Hub.registration.collectAsStateWithLifecycle()
     val now = System.currentTimeMillis()
     fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
@@ -163,6 +172,12 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
                 onClick = { open("https://jeiel85.github.io/find-my-wife-phone/#privacy") }) { Chevron() }
             ListRow("오픈소스 · GitHub", "버전 ${BuildConfig.VERSION_NAME} · MIT 라이선스", Icons.Rounded.Code, P.c.ink,
                 onClick = { open("https://github.com/jeiel85/find-my-wife-phone") }) { Chevron() }
+            if (registration == Registration.Removed) {
+                ListRow("서버에서 이 폰을 지웠어요", "다시 쓰려면 새 기기 연결로 QR을 주고받으세요", Icons.Rounded.DeleteForever, P.c.inkSoft)
+            } else if (registration != Registration.NotConfigured) {
+                ListRow("서버에서 이 폰 지우기", removeError ?: "앱을 지우기 전에 누르면 중계 서버에 남은 기기 ID·푸시 토큰·연결이 모두 지워져요",
+                    Icons.Rounded.DeleteForever, P.c.danger, onClick = { removeRelay = true }) { Chevron() }
+            }
         }
         Spacer(Modifier.height(40.dp))
     }
@@ -170,6 +185,31 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
     if (snoozeSheet) SnoozeSheet(onDismiss = { snoozeSheet = false })
     if (locationSheet) LocationSheet(settings.locationPolicy, onDismiss = { locationSheet = false })
     if (editName) NameDialog(settings.myName, onDismiss = { editName = false })
+    if (removeRelay) {
+        AlertDialog(
+            onDismissRequest = { if (!removing) removeRelay = false },
+            title = { Text("서버에서 이 폰을 지울까요?") },
+            text = {
+                Text(
+                    (if (peers.isEmpty()) "" else "연결된 가족(${peers.joinToString { it.name }})과의 연결도 모두 해제돼요. ") +
+                        "중계 서버에서 이 폰의 기기 ID, 푸시 토큰, 연결 정보를 지우고, 다시 연결하기 전까지 서버에 등록하지 않아요. " +
+                        "폰에 남은 기록은 그대로예요.",
+                )
+            },
+            confirmButton = {
+                TextButton(enabled = !removing, onClick = {
+                    removing = true
+                    scope.launch {
+                        val r = Hub.removeFromRelay()
+                        removing = false
+                        removeRelay = false
+                        removeError = (r as? RelayResult.Fail)?.let { "지우지 못했어요 · ${errorText(it.code)}" }
+                    }
+                }) { Text(if (removing) "지우는 중…" else "지우기", color = P.c.danger) }
+            },
+            dismissButton = { TextButton(enabled = !removing, onClick = { removeRelay = false }) { Text("취소") } },
+        )
+    }
     unpair?.let { p ->
         AlertDialog(
             onDismissRequest = { unpair = null },
@@ -218,6 +258,7 @@ private fun ProfileCard(name: String, familyCount: Int, snoozeUntil: Long, onEdi
                     Registration.Working -> Chip("연결 중", P.c.inkSoft)
                     Registration.NotConfigured -> Chip("푸시 설정 없음", P.c.danger)
                     is Registration.Failed -> Chip("푸시 연결 안 됨", P.c.danger)
+                    Registration.Removed -> Chip("서버에서 지움", P.c.inkSoft)
                 }
             }
         }

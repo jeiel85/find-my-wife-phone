@@ -3,7 +3,9 @@ package io.github.jeiel85.findmywifephone.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationManager
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -99,10 +101,30 @@ fun PermissionList(policy: LocationPolicy) {
     val context = LocalContext.current
     val tick = rememberResumeTick()
     var refresh by remember { mutableIntStateOf(0) }
-    val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
-    val location = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
-    val bgLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh++ }
-    val nearby = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
+    // Refused twice ("허용 안 함" again): Android stops showing its prompt, only app settings can grant it.
+    var blocked by remember { mutableStateOf(setOf<String>()) }
+    var showBlocked by remember { mutableStateOf<String?>(null) }
+    fun noteDenied(key: String, permission: String) {
+        val activity = context.findActivity() ?: return
+        if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED &&
+            !activity.shouldShowRequestPermissionRationale(permission)) blocked = blocked + key
+    }
+    val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        refresh++
+        if (!ok && Build.VERSION.SDK_INT >= 33) noteDenied("notify", Manifest.permission.POST_NOTIFICATIONS)
+    }
+    val location = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        refresh++
+        if (res[Manifest.permission.ACCESS_FINE_LOCATION] != true) noteDenied("location", Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+    val bgLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        refresh++
+        if (!ok) noteDenied("bglocation", Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+    }
+    val nearby = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
+        refresh++
+        res.entries.firstOrNull { !it.value }?.let { noteDenied("nearby", it.key) }
+    }
     val checks = remember(tick, refresh, policy) { Checks.all(context, policy) }
     var disclose by remember { mutableStateOf<String?>(null) }
 
@@ -124,6 +146,24 @@ fun PermissionList(policy: LocationPolicy) {
         }
     }
 
+    showBlocked?.let { title ->
+        AlertDialog(
+            onDismissRequest = { showBlocked = null },
+            title = { Text("‘$title’ 권한이 막혀 있어요") },
+            text = {
+                Text("‘허용 안 함’을 두 번 고르면 앱에서 다시 물어볼 수 없어요. 앱 설정의 ‘권한’에서 직접 허용해 주세요." +
+                    if (title.startsWith("위치")) " 위치는 ‘항상 허용’을 골라 주세요." else "")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBlocked = null
+                    open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+                }) { Text("앱 설정 열기") }
+            },
+            dismissButton = { TextButton(onClick = { showBlocked = null }) { Text("닫기") } },
+        )
+    }
+
     Column {
         checks.forEach { c ->
             ListRow(
@@ -133,7 +173,8 @@ fun PermissionList(policy: LocationPolicy) {
                 iconTint = if (c.granted) P.c.sage else if (c.required) P.c.coral else P.c.amber,
                 onClick = if (c.granted) null else {
                     {
-                        when (c.key) {
+                        if (c.key in blocked) showBlocked = c.title
+                        else when (c.key) {
                             "notify" -> if (Build.VERSION.SDK_INT >= 33) notify.launch(Manifest.permission.POST_NOTIFICATIONS)
                             "fullscreen" -> if (Build.VERSION.SDK_INT >= 34) open(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
                                 Uri.parse("package:${context.packageName}")))
@@ -152,6 +193,12 @@ fun PermissionList(policy: LocationPolicy) {
             }
         }
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 /** Shown right before the system location prompt (Google Play prominent disclosure for background location). */

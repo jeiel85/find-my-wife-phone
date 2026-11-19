@@ -145,6 +145,23 @@ object Notifier {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
             .build())
 
+    /** SoundState lifted Do Not Disturb to ring and Android did not let it put the mode back. */
+    fun dndNotRestored(context: Context) = update(context, ID_INFO_BASE + 7,
+        NotificationCompat.Builder(context, CH_INFO)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("방해 금지 모드를 되돌리지 못했어요")
+            .setContentText("울리려고 잠시 껐던 방해 금지 모드가 꺼진 채예요. 탭해서 다시 켜 주세요.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("울리려고 잠시 껐던 방해 금지 모드가 꺼진 채예요. 탭해서 다시 켜 주세요."))
+            .setAutoCancel(true)
+            .setContentIntent(PendingIntent.getActivity(context, 8,
+                Intent(android.provider.Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+            .build())
+
+    /** GitHub build: background update checks kept failing for days ([reason] from Updater). */
+    fun updateFailing(context: Context, reason: String) =
+        info(context, ID_INFO_BASE + 8, "며칠째 새 버전을 확인하지 못했어요", "$reason · 설정 → 업데이트에서 다시 확인해 보세요.", MainActivity.SCREEN_SETTINGS)
+
     fun updated(context: Context, version: String) =
         info(context, ID_INFO_BASE + 5, "$version 버전으로 업데이트했어요", "연결과 기록, 설정은 그대로예요.", MainActivity.SCREEN_SETTINGS)
 }

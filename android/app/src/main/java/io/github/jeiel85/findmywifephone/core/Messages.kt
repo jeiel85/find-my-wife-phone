@@ -25,6 +25,8 @@ data class PeerStatus(
     val charging: Boolean = false,
     /** While ringing: true = broadcasting the nearby beacon, false = cannot (Bluetooth off/denied), null = n/a. */
     val beacon: Boolean? = null,
+    /** Sender's versionCode (major×10000 + minor×100 + patch); 0 = sent by 0.3.4 or older. */
+    val appVersion: Int = 0,
 ) {
     fun snoozed(now: Long) = snoozeUntil > now
 
@@ -34,6 +36,7 @@ data class PeerStatus(
         .put("battery", battery)
         .put("charging", charging)
         .apply { beacon?.let { put("beacon", it) } }
+        .apply { if (appVersion > 0) put("ver", appVersion) }
 
     companion object {
         const val FOREVER = Long.MAX_VALUE
@@ -45,10 +48,14 @@ data class PeerStatus(
                 battery = it.optInt("battery", -1).coerceIn(-1, 100),
                 charging = it.optBoolean("charging", false),
                 beacon = if (it.has("beacon")) it.optBoolean("beacon") else null,
+                appVersion = it.optInt("ver", 0).coerceAtLeast(0),
             )
         }
     }
 }
+
+/** versionCode (major×10000 + minor×100 + patch, app/build.gradle.kts) back to "0.3.4". */
+fun versionName(code: Int): String = "${code / 10000}.${code / 100 % 100}.${code % 100}"
 
 /** Life cycle of a ring request as seen by both sides. */
 enum class RingState(val wire: String) {

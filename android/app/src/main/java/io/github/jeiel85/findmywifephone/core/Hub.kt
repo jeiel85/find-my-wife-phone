@@ -39,12 +39,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import org.json.JSONObject
 
 sealed class Registration {
     data object NotConfigured : Registration()   // built without google-services.json
     data object Working : Registration()
     data object Ready : Registration()
     data class Failed(val code: String) : Registration()
+    /** The owner removed this phone from the relay; it registers again only when they pair. */
+    data object Removed : Registration()
 }
 
 enum class RequestKind { RING, LOCATE }
@@ -59,6 +62,11 @@ data class Outgoing(
     val ring: RingState? = null,
     val locate: LocateState? = null,
     val result: Msg.LocateResult? = null,
+    /**
+     * The request went out but its answer was lost (no HTTP response): the relay may well have
+     * forwarded it, so the other phone can ring. Shown as "not sure" and the stop button stays.
+     */
+    val uncertain: Boolean = false,
     /** No answer at all within [NO_RESPONSE_MS] after the relay accepted the request. */
     val noResponse: Boolean = false,
     /** "그만 울리기" pressed; the cancel is on its way to the relay. */
@@ -116,7 +124,20 @@ object Hub {
             _registration.value = Registration.NotConfigured
             return
         }
-        scope.launch { ensureRegistered() }
+        scope.launch { if (ensureRegistered() != null) announceVersion() }
+    }
+
+    /**
+     * First start of a new version: tell the peers, so their screen stops warning that this phone
+     * runs an old version (PeerStatus.appVersion) without waiting for the next request.
+     */
+    private fun announceVersion() {
+        if (store.announcedVersion == BuildConfig.VERSION_CODE) return
+        val st = myStatus()
+        // Retry on the next start only when it might work then; a peer the relay refuses (4xx) won't.
+        val done = store.peers.value.map { send(it, Msg.Status(st), ttlSec = 3600) }
+            .all { it is RelayResult.Ok || (it is RelayResult.Fail && it.status in 400..499) }
+        if (done) store.announcedVersion = BuildConfig.VERSION_CODE
     }
 
     // ---- registration --------------------------------------------------------------------
@@ -126,6 +147,10 @@ object Hub {
 
     private suspend fun registerLocked(): Identity? = registerLock.withLock {
         if (!BuildConfig.HAS_FIREBASE) return null
+        if (store.relayRemoved) {
+            _registration.value = Registration.Removed
+            return null
+        }
         _registration.value = Registration.Working
         val fcm = try {
             FirebaseMessaging.getInstance().token.await()
@@ -178,6 +203,7 @@ object Hub {
             battery = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 } ?: -1,
             charging = bm?.isCharging == true,
             beacon = RingService.beaconState,
+            appVersion = BuildConfig.VERSION_CODE,
         )
     }
 
@@ -197,10 +223,12 @@ object Hub {
     suspend fun createOffer(): Result<PairOffer> = withContext(Dispatchers.IO) { createOfferIo() }
 
     private suspend fun createOfferIo(): Result<PairOffer> {
-        val me = ensureRegistered() ?: return Result.failure(IllegalStateException(registrationCode()))
+        store.relayRemoved = false // pairing again is the owner's way back after "서버에서 이 폰 지우기"
         val secret = Crypto.randomBytes(16)
         val expiresAt = System.currentTimeMillis() + INVITE_TTL_SEC * 1000L
-        return when (val r = relay.createInvite(me.token, Crypto.inviteId(secret), INVITE_TTL_SEC)) {
+        val (me, r) = withIdentity { relay.createInvite(it.token, Crypto.inviteId(secret), INVITE_TTL_SEC) }
+            ?: return Result.failure(IllegalStateException(registrationCode()))
+        return when (r) {
             is RelayResult.Ok -> {
                 store.addInvite(secret, expiresAt)
                 Result.success(PairOffer(me.deviceId, me.publicKey, secret, store.settings.value.myName, expiresAt))
@@ -211,17 +239,37 @@ object Hub {
 
     private fun registrationCode() = (registration.value as? Registration.Failed)?.code ?: "not_registered"
 
+    /**
+     * Runs [call] as this phone. When the relay no longer knows us (401 — e.g. the daily cleanup
+     * dropped a registration that had no pairs for months), registers anew and tries once more.
+     */
+    private suspend fun withIdentity(call: (Identity) -> RelayResult): Pair<Identity, RelayResult>? {
+        var me = ensureRegistered() ?: return null
+        var r = call(me)
+        if (r is RelayResult.Fail && r.status == 401) {
+            store.clearRegistration()
+            me = ensureRegistered() ?: return null
+            r = call(me)
+        }
+        return me to r
+    }
+
     /** We scanned someone's QR. */
     suspend fun join(offer: PairOffer): Result<Peer> = withContext(Dispatchers.IO) { joinIo(offer) }
 
     private suspend fun joinIo(offer: PairOffer): Result<Peer> {
         if (offer.expiresAt < System.currentTimeMillis()) return Result.failure(IllegalStateException("invite_expired"))
-        val me = ensureRegistered() ?: return Result.failure(IllegalStateException(registrationCode()))
-        if (offer.deviceId == me.deviceId) return Result.failure(IllegalStateException("self_pairing"))
-        val key = Crypto.pairKey(me.privateKey, Crypto.decodePublic(offer.publicKey), offer.secret)
+        store.relayRemoved = false
+        val current = ensureRegistered() ?: return Result.failure(IllegalStateException(registrationCode()))
+        if (offer.deviceId == current.deviceId) return Result.failure(IllegalStateException("self_pairing"))
+        val key = Crypto.pairKey(current.privateKey, Crypto.decodePublic(offer.publicKey), offer.secret)
         val hello = Msg.Hello(store.settings.value.myName, deviceLabel(), ack = false, status = myStatus())
-        val env = Crypto.seal(key, hello.toJson().toString().toByteArray(), Crypto.aad(me.deviceId, offer.deviceId))
-        return when (val r = relay.join(me.token, Crypto.inviteId(offer.secret), Crypto.b64(me.publicKey), env)) {
+        // Sealed per attempt: a re-registration after 401 changes our device id, which is in the AAD.
+        val (_, r) = withIdentity { me ->
+            val env = Crypto.seal(key, hello.toJson().toString().toByteArray(), Crypto.aad(me.deviceId, offer.deviceId))
+            relay.join(me.token, Crypto.inviteId(offer.secret), Crypto.b64(me.publicKey), env)
+        } ?: return Result.failure(IllegalStateException(registrationCode()))
+        return when (r) {
             is RelayResult.Ok -> {
                 val now = System.currentTimeMillis()
                 val peer = Peer(offer.deviceId, offer.name.ifBlank { "상대" }, "", key, now, null, 0)
@@ -242,6 +290,34 @@ object Hub {
         store.removePeer(peerId)
         _outgoing.update { it - peerId }
         history.add(HistoryEntry(Msg.newId(), System.currentTimeMillis(), peer.id, peer.name, Direction.OUT, Kind.UNPAIR, "unpaired"))
+    }
+
+    /**
+     * 설정 → 서버에서 이 폰 지우기: tells every peer, then deletes this phone's id, push token, links
+     * and invites on the relay (privacy policy §7). The phone stays unregistered until it pairs again.
+     * On failure nothing local changes, so the owner can retry.
+     */
+    suspend fun removeFromRelay(): RelayResult = withContext(Dispatchers.IO) {
+        // Set first: a 401 inside send() must not re-register us behind the owner's back.
+        store.relayRemoved = true
+        val me = store.identity()
+        if (me != null) {
+            store.peers.value.forEach { send(it, Msg.Unpair(), ttlSec = 86_400) }
+            val r = relay.deleteDevice(me.token)
+            if (r is RelayResult.Fail && r.status != 401) { // 401: the relay had already forgotten us
+                store.relayRemoved = false
+                return@withContext r
+            }
+        }
+        val now = System.currentTimeMillis()
+        store.peers.value.forEach { p ->
+            store.removePeer(p.id)
+            history.add(HistoryEntry(Msg.newId(), now, p.id, p.name, Direction.OUT, Kind.UNPAIR, "unpaired"))
+        }
+        _outgoing.value = emptyMap()
+        store.clearRegistration()
+        _registration.value = Registration.Removed
+        RelayResult.Ok(JSONObject())
     }
 
     // ---- sending -------------------------------------------------------------------------
@@ -287,10 +363,16 @@ object Hub {
                 throw e
             }
             ringSend?.complete(r)
+            // No HTTP answer at all: the relay may have forwarded it before the answer was lost.
+            val lost = r is RelayResult.Fail && r.status == 0 && r.code == "network"
             updateOutgoing(peerId, reqId) {
-                if (r is RelayResult.Fail) it.copy(sendError = r.code) else it.copy(sent = true)
+                when {
+                    lost -> it.copy(sent = true, uncertain = true)
+                    r is RelayResult.Fail -> it.copy(sendError = r.code)
+                    else -> it.copy(sent = true)
+                }
             }
-            if (r is RelayResult.Fail) {
+            if (r is RelayResult.Fail && !lost) {
                 history.update(reqId, Direction.OUT, "failed:${r.code}")
                 return@launch
             }
@@ -451,10 +533,12 @@ object Hub {
     private fun onRingRequest(peer: Peer, msg: Msg.Ring, now: Long) {
         history.add(HistoryEntry(msg.reqId, now, peer.id, peer.name, Direction.IN, Kind.RING, "received"))
         if (now - msg.ts > MAX_REQUEST_AGE_MS) {
+            Log.i(TAG, "ring ${msg.reqId} skipped: ${(now - msg.ts) / 1000}s old")
             history.update(msg.reqId, Direction.IN, "late")
             return
         }
         if (store.wasCancelled(msg.reqId)) {
+            Log.i(TAG, "ring ${msg.reqId} skipped: its cancel arrived first")
             // Its cancel overtook it. The requester already shows "멈췄어요"; nothing to send back.
             history.update(msg.reqId, Direction.IN, RingState.STOPPED.wire)
             return

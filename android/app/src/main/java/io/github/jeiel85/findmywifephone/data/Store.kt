@@ -101,6 +101,19 @@ class Store(context: Context) {
     fun registeredFcmToken(): String? = prefs.getString("fcmToken", null)
     fun setRegisteredFcmToken(token: String) = prefs.edit().putString("fcmToken", token).apply()
 
+    /**
+     * The owner removed this phone from the relay (설정 → 서버에서 이 폰 지우기): stay unregistered
+     * until they pair again, so nothing is re-created behind their back.
+     */
+    var relayRemoved: Boolean
+        get() = prefs.getBoolean("relayRemoved", false)
+        set(v) = prefs.edit().putBoolean("relayRemoved", v).apply()
+
+    /** App version last told to the peers; a newer install announces itself once (Hub.init). */
+    var announcedVersion: Int
+        get() = prefs.getInt("announcedVer", 0)
+        set(v) = prefs.edit().putInt("announcedVer", v).apply()
+
     /** Relay forgot us (401). Peers keep their keys but are unreachable until paired again. */
     @Synchronized
     fun clearRegistration() {

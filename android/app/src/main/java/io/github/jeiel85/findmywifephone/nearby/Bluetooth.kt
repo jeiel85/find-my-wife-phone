@@ -12,6 +12,7 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -36,6 +37,10 @@ object NearbyPermissions {
 
     fun bluetoothOn(context: Context) =
         context.getSystemService(BluetoothManager::class.java)?.adapter?.isEnabled == true
+
+    /** Android 10–11 deliver no BLE scan results while location services are off, even with the permission. */
+    fun locationServicesNeeded(context: Context) =
+        Build.VERSION.SDK_INT < 31 && context.getSystemService(LocationManager::class.java)?.isLocationEnabled == false
 }
 
 /**
@@ -43,13 +48,23 @@ object NearbyPermissions {
  * can show how close it is. Nothing else is in the advertisement (no name, no connectable GATT).
  */
 @SuppressLint("MissingPermission") // checked in start(); SecurityException is caught as well
-class BeaconAdvertiser(private val context: Context, private val pairKey: ByteArray) {
+class BeaconAdvertiser(
+    private val context: Context,
+    private val pairKey: ByteArray,
+    /** The stack refused to advertise after start() returned true; the requester should be told. */
+    private val onFailed: () -> Unit = {},
+) {
     private val main = Handler(Looper.getMainLooper())
     private val advertiser get() = context.getSystemService(BluetoothManager::class.java)?.adapter?.bluetoothLeAdvertiser
     private var running = false
 
     private val callback = object : AdvertiseCallback() {
-        override fun onStartFailure(errorCode: Int) { Log.w(TAG, "advertise failed: $errorCode") }
+        override fun onStartFailure(errorCode: Int) {
+            Log.w(TAG, "advertise failed: $errorCode")
+            // ALREADY_STARTED only means a rotation raced its own stop; the beacon is still on air.
+            if (errorCode == ADVERTISE_FAILED_ALREADY_STARTED || !running) return
+            main.post { stop(); onFailed() }
+        }
     }
 
     private val rotate = object : Runnable {
@@ -88,7 +103,9 @@ class BeaconAdvertiser(private val context: Context, private val pairKey: ByteAr
             adv.startAdvertising(settings, data, callback)
         } catch (e: Exception) {
             Log.w(TAG, "advertise refused", e)
-            running = false
+            val wasRunning = running
+            stop()
+            if (wasRunning) main.post(onFailed)
         }
     }
 
@@ -117,6 +134,9 @@ class NearbyScanner(private val context: Context, private val pairKey: ByteArray
     private val meter = ProximityMeter()
     private val _reading = MutableStateFlow(NearbyReading())
     val reading: StateFlow<NearbyReading> = _reading.asStateFlow()
+    private val _failure = MutableStateFlow<String?>(null)
+    /** Why scanning stopped or never started, in words for the card; null while it works. */
+    val failure: StateFlow<String?> = _failure.asStateFlow()
     private var heard = false
     private var running = false
     private val scanner get() = context.getSystemService(BluetoothManager::class.java)?.adapter?.bluetoothLeScanner
@@ -131,7 +151,13 @@ class NearbyScanner(private val context: Context, private val pairKey: ByteArray
             publish(now)
         }
 
-        override fun onScanFailed(errorCode: Int) { Log.w(TAG, "scan failed: $errorCode") }
+        override fun onScanFailed(errorCode: Int) {
+            Log.w(TAG, "scan failed: $errorCode")
+            main.post {
+                stop()
+                _failure.value = scanFailureText(errorCode)
+            }
+        }
     }
 
     private val tick = object : Runnable {
@@ -149,7 +175,8 @@ class NearbyScanner(private val context: Context, private val pairKey: ByteArray
     fun start(): Boolean {
         if (running) return true
         if (!NearbyPermissions.granted(context) || !NearbyPermissions.bluetoothOn(context)) return false
-        val s = scanner ?: return false
+        val s = scanner ?: return false.also { _failure.value = scanFailureText(ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED) }
+        _failure.value = null
         return try {
             val filter = ScanFilter.Builder().setServiceData(ParcelUuid(BeaconToken.SERVICE), ByteArray(0)).build()
             val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
@@ -159,6 +186,7 @@ class NearbyScanner(private val context: Context, private val pairKey: ByteArray
             true
         } catch (e: Exception) {
             Log.w(TAG, "scan refused", e)
+            _failure.value = scanFailureText(-1)
             false
         }
     }
@@ -171,4 +199,14 @@ class NearbyScanner(private val context: Context, private val pairKey: ByteArray
     }
 
     private companion object { const val TAG = "NearbyScanner" }
+}
+
+/** Words for ScanCallback.SCAN_FAILED_* (-1 = the stack threw). */
+fun scanFailureText(errorCode: Int): String = when (errorCode) {
+    ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED -> "이 폰은 블루투스 저전력 검색을 지원하지 않아요"
+    ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED, ScanCallback.SCAN_FAILED_INTERNAL_ERROR ->
+        "블루투스가 응답하지 않아요. 블루투스를 껐다 켠 뒤 다시 열어 주세요"
+    ScanCallback.SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "블루투스 검색을 너무 자주 시작했어요. 30초쯤 뒤에 다시 열어 주세요"
+    ScanCallback.SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "블루투스가 다른 일로 바빠요. 잠시 뒤 다시 열어 주세요"
+    else -> "블루투스 검색을 시작하지 못했어요"
 }
