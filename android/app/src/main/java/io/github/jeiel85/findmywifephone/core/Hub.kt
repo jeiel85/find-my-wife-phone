@@ -120,6 +120,16 @@ object Hub {
         store = Store(context)
         history = History(context)
         relay = Relay(BuildConfig.RELAY_URL)
+        Clock.offsetMs = store.clockOffset
+        relay.onServerDate = { date, sent, received ->
+            Clock.estimate(date, sent, received)?.let { off ->
+                // Whole-second Date headers jitter by a second; only a real change is worth a write.
+                if (kotlin.math.abs(off - Clock.offsetMs) > 1_000) {
+                    Clock.offsetMs = off
+                    store.clockOffset = off
+                }
+            }
+        }
         if (!BuildConfig.HAS_FIREBASE) {
             _registration.value = Registration.NotConfigured
             return
@@ -502,7 +512,7 @@ object Hub {
         }
         val msg = Msg.parse(String(plain)) ?: return
         val now = System.currentTimeMillis()
-        if (msg.ts > now + MAX_CLOCK_SKEW_MS) return
+        if (msg.ts > Clock.now() + MAX_CLOCK_SKEW_MS) return
         if (!store.markSeen(msg.id)) return
         store.updatePeer(from) { it.copy(status = msg.status ?: it.status, seenAt = now) }
         handle(store.peer(from) ?: return, msg, now)
@@ -545,8 +555,10 @@ object Hub {
 
     private fun onRingRequest(peer: Peer, msg: Msg.Ring, now: Long) {
         history.add(HistoryEntry(msg.reqId, now, peer.id, peer.name, Direction.IN, Kind.RING, "received"))
-        if (now - msg.ts > MAX_REQUEST_AGE_MS) {
-            Log.i(TAG, "ring ${msg.reqId} skipped: ${(now - msg.ts) / 1000}s old")
+        // Both clocks relay-corrected (Clock); an older sender's own clock may still be off.
+        val age = Clock.now() - msg.ts
+        if (age > MAX_REQUEST_AGE_MS) {
+            Log.i(TAG, "ring ${msg.reqId} skipped: ${age / 1000}s old (clock offset ${Clock.offsetMs / 1000}s)")
             history.update(msg.reqId, Direction.IN, "late")
             return
         }
@@ -568,7 +580,7 @@ object Hub {
 
     private fun onLocateRequest(peer: Peer, msg: Msg.Locate, now: Long) {
         history.add(HistoryEntry(msg.reqId, now, peer.id, peer.name, Direction.IN, Kind.LOCATE, "received"))
-        if (now - msg.ts > MAX_REQUEST_AGE_MS) {
+        if (Clock.now() - msg.ts > MAX_REQUEST_AGE_MS) {
             history.update(msg.reqId, Direction.IN, "late")
             return
         }

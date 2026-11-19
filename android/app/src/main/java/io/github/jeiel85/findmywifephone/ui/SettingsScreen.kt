@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Vibration
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jeiel85.findmywifephone.BuildConfig
+import io.github.jeiel85.findmywifephone.core.Clock
 import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.LocationPolicy
 import io.github.jeiel85.findmywifephone.core.PeerStatus
@@ -152,7 +154,12 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
             ListRow("새 기기 연결", null, Icons.Rounded.Add, P.c.sage, onClick = onPair) { Chevron() }
         }
 
-        Group("확실히 울리게 하는 설정") { PermissionList(settings.locationPolicy) }
+        Group("확실히 울리게 하는 설정") {
+            if (Clock.skewed) ClockRow(Clock.offsetMs) {
+                runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_DATE_SETTINGS)) }
+            }
+            PermissionList(settings.locationPolicy)
+        }
 
         Group("화면") {
             Text("테마", style = MaterialTheme.typography.titleMedium, color = P.c.ink,
@@ -164,7 +171,7 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
             ) { mode -> Hub.store.updateSettings { it.copy(theme = mode) } }
         }
 
-        Group("업데이트") { UpdateSection(settings.autoUpdate) }
+        Group("업데이트") { UpdateSection(settings) }
 
         Group("기록과 정보") {
             ListRow("기록", "누가 언제 울리고 위치를 확인했는지", Icons.AutoMirrored.Rounded.ReceiptLong, P.c.ink, onClick = onHistory) { Chevron() }
@@ -286,6 +293,18 @@ private fun Group(title: String, content: @Composable () -> Unit) {
     Spacer(Modifier.height(18.dp))
     SectionTitle(title)
     Card(Modifier.fillMaxWidth(), padding = 8.dp) { Column { content() } }
+}
+
+/**
+ * This phone's clock is off from the relay's by [offsetMs] (relay minus phone). Requests between two
+ * v0.3.6+ apps are judged on corrected time, but an older peer stamps or checks with its own clock.
+ */
+@Composable
+private fun ClockRow(offsetMs: Long, onClick: () -> Unit) {
+    val minutes = maxOf(1L, kotlin.math.abs(offsetMs) / 60_000)
+    val off = if (offsetMs > 0) "${minutes}분 느려요" else "${minutes}분 빨라요"
+    ListRow("이 폰 시계가 $off", "옛 버전 앱과 주고받는 찾기 요청이 늦게 온 것으로 무시될 수 있어요. 눌러서 날짜와 시간을 자동으로 맞추세요",
+        Icons.Rounded.Schedule, P.c.danger, onClick = onClick) { Chevron() }
 }
 
 @Composable

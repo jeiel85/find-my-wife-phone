@@ -144,7 +144,8 @@ sealed class Msg {
 
     companion object {
         fun newId(): String = UUID.randomUUID().toString()
-        fun now(): Long = System.currentTimeMillis()
+        /** Stamps [ts]: relay-corrected so the other phone can tell the age even if our clock is off. */
+        fun now(): Long = Clock.now()
 
         /** null for unknown versions/types or missing fields — newer peers must not crash older apps. */
         fun parse(text: String): Msg? = try {

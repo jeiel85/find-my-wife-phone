@@ -12,7 +12,17 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
@@ -86,6 +96,7 @@ class MainActivity : ComponentActivity() {
         LaunchedEffect(incoming) {
             if (incoming != null) startActivity(Intent(this@MainActivity, AlertActivity::class.java))
         }
+        fun openAlert() = startActivity(Intent(this@MainActivity, AlertActivity::class.java))
         Box(Modifier.fillMaxSize().background(P.c.wall).safeDrawingPadding()) {
             if (!settings.onboarded) {
                 OnboardingScreen(onDone = { })
@@ -106,6 +117,21 @@ class MainActivity : ComponentActivity() {
                         onHistory = { screen = SCREEN_HISTORY },
                         onSettings = { screen = SCREEN_SETTINGS },
                     )
+                }
+            }
+            // The alert screen opens once per request; after Back closed it, this brings it back.
+            val label = ring?.let { if (it.test) "내 폰 울려 보기 중" else "${it.peerName}님이 폰을 찾고 있어요" }
+                ?: locate?.let { "${it.peerName}님이 위치를 확인하려고 해요" }
+            if (label != null) {
+                Row(
+                    Modifier.align(Alignment.BottomCenter).padding(16.dp).clip(RoundedCornerShape(24.dp))
+                        .background(P.c.coral).clickable { openAlert() }.padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(label, color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f, fill = false))
+                    Text("  열기", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleSmall)
                 }
             }
         }

@@ -25,11 +25,13 @@ import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.update.UpdateState
 import io.github.jeiel85.findmywifephone.update.UpdateWorker
 import io.github.jeiel85.findmywifephone.update.Updater
+import io.github.jeiel85.findmywifephone.data.Settings
 import kotlinx.coroutines.launch
 
 /** GitHub build: the app updates itself from GitHub Releases (DECISIONS.md D-7). */
 @Composable
-internal fun UpdateSection(autoUpdate: Boolean) {
+internal fun UpdateSection(settings: Settings) {
+    val autoUpdate = settings.autoUpdate
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by Updater.state.collectAsStateWithLifecycle()
