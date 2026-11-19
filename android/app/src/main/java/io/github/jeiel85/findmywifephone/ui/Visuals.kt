@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.jeiel85.findmywifephone.BuildConfig
+import io.github.jeiel85.findmywifephone.core.Hub
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -245,24 +246,44 @@ fun SofaScene(modifier: Modifier = Modifier) {
 
 // ---- mini map (OpenStreetMap tiles) -------------------------------------------------------
 
+/**
+ * OpenStreetMap's tile policy (operations.osmfoundation.org/policies/tiles): identify the app, show
+ * the attribution, and keep tiles at least a week instead of fetching them again. Tiles are fetched
+ * only when a shared location is on screen; the same place opened again comes from [dir].
+ */
 private object Tiles {
+    private const val KEEP_MS = 7L * 86_400_000
+    private const val MAX_FILES = 300
     private val cache = LruCache<String, ImageBitmap>(48)
+    private val dir by lazy { java.io.File(Hub.context.cacheDir, "osm-tiles").apply { mkdirs() } }
 
     suspend fun load(z: Int, x: Int, y: Int): ImageBitmap? {
         val key = "$z/$x/$y"
         cache.get(key)?.let { return it }
         return withContext(Dispatchers.IO) {
             runCatching {
-                val conn = URL("https://tile.openstreetmap.org/$key.png").openConnection() as HttpURLConnection
-                // OSM tile policy: identify the app; tiles are fetched only when a location is on screen.
-                conn.setRequestProperty("User-Agent", "find-my-wife-phone/${BuildConfig.VERSION_NAME} (+https://github.com/jeiel85/find-my-wife-phone)")
-                conn.connectTimeout = 8000; conn.readTimeout = 8000
-                try {
-                    if (conn.responseCode != 200) null
-                    else conn.inputStream.use { BitmapFactory.decodeStream(it) }?.asImageBitmap()
-                } finally { conn.disconnect() }
+                val file = java.io.File(dir, "$z-$x-$y.png")
+                val fresh = file.isFile && System.currentTimeMillis() - file.lastModified() < KEEP_MS
+                val bytes = if (fresh) file.readBytes() else download(key)?.also { save(file, it) }
+                bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
             }.getOrNull()?.also { cache.put(key, it) }
         }
+    }
+
+    private fun download(key: String): ByteArray? {
+        val conn = URL("https://tile.openstreetmap.org/$key.png").openConnection() as HttpURLConnection
+        conn.setRequestProperty("User-Agent", "find-my-wife-phone/${BuildConfig.VERSION_NAME} (+https://github.com/jeiel85/find-my-wife-phone)")
+        conn.connectTimeout = 8000; conn.readTimeout = 8000
+        return try {
+            if (conn.responseCode != 200) null else conn.inputStream.use { it.readBytes() }
+        } finally { conn.disconnect() }
+    }
+
+    /** Oldest tiles go first once there are more than [MAX_FILES] (~5 MB). */
+    private fun save(file: java.io.File, bytes: ByteArray) {
+        file.writeBytes(bytes)
+        val all = dir.listFiles() ?: return
+        if (all.size > MAX_FILES) all.sortedBy { it.lastModified() }.take(all.size - MAX_FILES).forEach { it.delete() }
     }
 }
 

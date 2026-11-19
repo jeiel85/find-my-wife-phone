@@ -42,6 +42,7 @@ android {
         // Play see (renamed for Play in v0.3.0 — DECISIONS.md D-9).
         applicationId = "com.jeiel85.ponerdi"
         minSdk = 29
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersion
@@ -119,4 +120,8 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    // Device tests (connectedPlayDebugAndroidTest): Play's FakeAppUpdateManager needs a real Context.
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

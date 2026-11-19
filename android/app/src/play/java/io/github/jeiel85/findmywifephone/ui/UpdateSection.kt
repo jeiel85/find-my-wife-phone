@@ -13,18 +13,19 @@ import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.update.SelfUpdate
 import io.github.jeiel85.findmywifephone.update.StoreUpdateWorker
 import io.github.jeiel85.findmywifephone.update.UpdateState
+import io.github.jeiel85.findmywifephone.data.Settings
 import kotlinx.coroutines.launch
 
 /** Play build: asks Play whether a newer version exists; Google Play installs it (DECISIONS.md D-10, D-11). */
 @Composable
-internal fun UpdateSection(autoUpdate: Boolean) {
+internal fun UpdateSection(settings: Settings) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by SelfUpdate.state.collectAsStateWithLifecycle()
 
     ToggleRow("새 버전 알림", "하루 두 번 Play 스토어에 새 버전이 있는지 보고 알려 줘요",
-        Icons.Rounded.SystemUpdate, P.c.sage, autoUpdate) { on ->
-        Hub.store.updateSettings { it.copy(autoUpdate = on) }
+        Icons.Rounded.SystemUpdate, P.c.sage, settings.updateNotice) { on ->
+        Hub.store.updateSettings { it.copy(updateNotice = on) }
         StoreUpdateWorker.schedule(context, on)
     }
     val (title, sub) = when (val s = state) {

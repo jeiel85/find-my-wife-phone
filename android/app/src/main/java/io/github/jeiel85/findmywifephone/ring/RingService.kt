@@ -74,8 +74,7 @@ class RingService : Service() {
             if (_ui.value == null) {
                 // startForegroundService() must be answered by startForeground() even when nothing rings.
                 runCatching {
-                    ServiceCompat.startForeground(this, Notifier.ID_RING,
-                        Notifier.ringCountdown(this, RingUi(reqId, name, ringing = false, secondsLeft = COUNTDOWN_SEC)),
+                    ServiceCompat.startForeground(this, Notifier.ID_RING, Notifier.ringSkipped(this),
                         if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0)
                 }
                 ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)

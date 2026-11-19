@@ -2,6 +2,7 @@ package io.github.jeiel85.findmywifephone.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import io.github.jeiel85.findmywifephone.BuildConfig
 import io.github.jeiel85.findmywifephone.core.LocationPolicy
 import io.github.jeiel85.findmywifephone.core.PeerStatus
 import io.github.jeiel85.findmywifephone.crypto.Crypto
@@ -41,8 +42,10 @@ data class Settings(
     /** Camera flash on while ringing — helps when the phone is under a cushion in the dark. */
     val ringFlash: Boolean = true,
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    /** GitHub release builds check GitHub Releases twice a day and install signed updates. Unused on Play. */
+    /** GitHub build: check GitHub Releases twice a day and install signed updates. Unused on Play. */
     val autoUpdate: Boolean = true,
+    /** Play build: say when Play has a newer version ("새 버전 알림"). Unused on GitHub. */
+    val updateNotice: Boolean = true,
 )
 
 enum class ThemeMode(val wire: String) {
@@ -109,6 +112,11 @@ class Store(context: Context) {
         get() = prefs.getBoolean("relayRemoved", false)
         set(v) = prefs.edit().putBoolean("relayRemoved", v).apply()
 
+    /** core/Clock's anchor (relay time minus elapsedRealtime) and the boot it belongs to. */
+    val clockBase: Long? get() = if (prefs.contains("clockBase")) prefs.getLong("clockBase", 0L) else null
+    val clockBoot: Int get() = prefs.getInt("clockBoot", -1)
+    fun setClockAnchor(base: Long, boot: Int) = prefs.edit().putLong("clockBase", base).putInt("clockBoot", boot).apply()
+
     /** App version last told to the peers; a newer install announces itself once (Hub.init). */
     var announcedVersion: Int
         get() = prefs.getInt("announcedVer", 0)
@@ -132,6 +140,9 @@ class Store(context: Context) {
         ringFlash = prefs.getBoolean("ringFlash", true),
         theme = ThemeMode.of(prefs.getString("theme", null)),
         autoUpdate = prefs.getBoolean("autoUpdate", true),
+        // Play 0.3.4–0.3.5 kept this switch under the GitHub build's key; a GitHub install's
+        // auto-install choice must not carry over as a Play notice choice.
+        updateNotice = prefs.getBoolean("updateNotice", BuildConfig.FLAVOR != "play" || prefs.getBoolean("autoUpdate", true)),
     )
 
     @Synchronized
@@ -147,6 +158,7 @@ class Store(context: Context) {
             .putBoolean("ringFlash", next.ringFlash)
             .putString("theme", next.theme.wire)
             .putBoolean("autoUpdate", next.autoUpdate)
+            .putBoolean("updateNotice", next.updateNotice)
             .apply()
         _settings.value = next
         return next

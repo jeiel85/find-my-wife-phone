@@ -12,6 +12,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.google.android.play.core.appupdate.AppUpdateManager
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.install.InstallException
 import com.google.android.play.core.install.model.InstallErrorCode
@@ -55,9 +56,12 @@ object SelfUpdate {
 
     private val backgroundCheck = AtomicBoolean(false)
 
+    /** Play's update API; device tests put a FakeAppUpdateManager here (src/androidTestPlay). */
+    @Volatile internal var managerFor: (Context) -> AppUpdateManager = { AppUpdateManagerFactory.create(it) }
+
     fun onAppStart(context: Context) {
         appContext = context.applicationContext
-        StoreUpdateWorker.schedule(context, Hub.store.settings.value.autoUpdate)
+        StoreUpdateWorker.schedule(context, Hub.store.settings.value.updateNotice)
         checkInBackground(context.applicationContext)
     }
 
@@ -73,7 +77,7 @@ object SelfUpdate {
      * arrive together, so one quiet check at a time is enough.
      */
     private fun checkInBackground(context: Context) {
-        if (!Hub.store.settings.value.autoUpdate) return
+        if (!Hub.store.settings.value.updateNotice) return
         if (!backgroundCheck.compareAndSet(false, true)) return
         scope.launch { try { check(context) } finally { backgroundCheck.set(false) } }
     }
@@ -86,7 +90,7 @@ object SelfUpdate {
     suspend fun check(context: Context, userInitiated: Boolean = false): UpdateState {
         if (userInitiated) _state.value = UpdateState.Checking
         val next = runCatching {
-            val info = AppUpdateManagerFactory.create(context.applicationContext).requestAppUpdateInfo()
+            val info = managerFor(context.applicationContext).requestAppUpdateInfo()
             stateOf(info.updateAvailability(), info.availableVersionCode())
         }.getOrElse { e ->
             Log.i(TAG, "update check unavailable: ${e.message}")
@@ -136,7 +140,7 @@ object SelfUpdate {
 class StoreUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         Hub.init(applicationContext)
-        if (!Hub.store.settings.value.autoUpdate) return Result.success()
+        if (!Hub.store.settings.value.updateNotice) return Result.success()
         val st = SelfUpdate.check(applicationContext)
         val prefs = applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (st is UpdateState.StoreUpdate && prefs.getString(KEY_NOTIFIED, null) != st.version) {

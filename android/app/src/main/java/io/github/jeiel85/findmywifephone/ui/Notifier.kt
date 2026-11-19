@@ -63,6 +63,19 @@ object Notifier {
         .setContentIntent(alertScreen(context))
         .setFullScreenIntent(alertScreen(context), true)
 
+    /**
+     * For a ring cancelled before its countdown: startForegroundService() still owes a
+     * startForeground(), but the alert notification would sound and open the full-screen alert for
+     * a moment. This one is silent, on the quiet channel, and removed right away.
+     */
+    fun ringSkipped(context: Context): Notification = NotificationCompat.Builder(context, CH_INFO)
+        .setSmallIcon(R.drawable.ic_stat)
+        .setContentTitle("멈춘 요청이에요")
+        .setSilent(true)
+        .setPriority(NotificationCompat.PRIORITY_MIN)
+        .setGroup(GROUP_ALERT)
+        .build()
+
     fun ringCountdown(context: Context, ui: RingUi): Notification = alertBuilder(context)
         .setContentTitle("${ui.peerName}님이 폰을 찾고 있어요")
         .setContentText("${ui.secondsLeft}초 뒤에 소리가 울려요. 원치 않으면 거절하세요.")

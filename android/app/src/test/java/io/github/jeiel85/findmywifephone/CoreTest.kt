@@ -1,5 +1,6 @@
 package io.github.jeiel85.findmywifephone
 
+import io.github.jeiel85.findmywifephone.core.Clock
 import io.github.jeiel85.findmywifephone.core.LocateState
 import io.github.jeiel85.findmywifephone.core.LocationPolicy
 import io.github.jeiel85.findmywifephone.core.Msg
@@ -114,6 +115,17 @@ class CoreTest {
         assertTrue(!PeerStatus(appVersion = 0).toJson().has("ver"))
         assertEquals(305, PeerStatus.fromJson(PeerStatus(appVersion = 305).toJson())!!.appVersion)
         assertEquals("0.3.5", versionName(305))
+    }
+
+    /** The relay's whole-second Date header against our round trip (issue #2: phone clock off). */
+    @Test fun clockOffsetFromRelayDate() {
+        // Relay stamped 12:00:00.x while our clock said 11:57:00.1–.3: we are ~3 min slow.
+        val sent = 1_000_000_000_100L; val received = sent + 200
+        val date = sent + 180_000 - 100 // whole second, 3 min ahead
+        assertEquals(180_000L - 100 + 500 - 100, Clock.estimate(date, sent, received))
+        assertNull(Clock.estimate(0, sent, received))                  // no Date header
+        assertNull(Clock.estimate(date, sent, sent + 6_000))           // too slow to tell
+        assertNull(Clock.estimate(date, received, sent))               // our own clock jumped back
     }
 
     @Test fun snoozeForeverIsSnoozed() {
