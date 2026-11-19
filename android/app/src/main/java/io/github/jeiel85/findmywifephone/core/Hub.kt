@@ -148,6 +148,8 @@ object Hub {
     private suspend fun registerLocked(): Identity? = registerLock.withLock {
         if (!BuildConfig.HAS_FIREBASE) return null
         if (store.relayRemoved) {
+            // A removal whose relay delete failed earlier: finish it now that we may be online.
+            store.identity()?.let { finishRelayRemoval(it) }
             _registration.value = Registration.Removed
             return null
         }
@@ -295,30 +297,41 @@ object Hub {
     /**
      * 설정 → 서버에서 이 폰 지우기: tells every peer, then deletes this phone's id, push token, links
      * and invites on the relay (privacy policy §7). The phone stays unregistered until it pairs again.
-     * On failure nothing local changes, so the owner can retry.
+     *
+     * Once the unpair notices are out the peers have dropped us (and our pair keys), so the local
+     * pairs go too, whatever the relay says next. A failed relay delete stays pending
+     * ([removalPending]) and is retried on the next start or tap.
      */
     suspend fun removeFromRelay(): RelayResult = withContext(Dispatchers.IO) {
         // Set first: a 401 inside send() must not re-register us behind the owner's back.
         store.relayRemoved = true
         val me = store.identity()
-        if (me != null) {
-            store.peers.value.forEach { send(it, Msg.Unpair(), ttlSec = 86_400) }
-            val r = relay.deleteDevice(me.token)
-            if (r is RelayResult.Fail && r.status != 401) { // 401: the relay had already forgotten us
-                store.relayRemoved = false
-                return@withContext r
-            }
-        }
+        val peers = store.peers.value
+        if (me != null) peers.forEach { send(it, Msg.Unpair(), ttlSec = 86_400) }
         val now = System.currentTimeMillis()
-        store.peers.value.forEach { p ->
+        peers.forEach { p ->
             store.removePeer(p.id)
             history.add(HistoryEntry(Msg.newId(), now, p.id, p.name, Direction.OUT, Kind.UNPAIR, "unpaired"))
         }
         _outgoing.value = emptyMap()
-        store.clearRegistration()
         _registration.value = Registration.Removed
-        RelayResult.Ok(JSONObject())
+        // send() may have cleared the registration on a 401, so read it again.
+        store.identity()?.let { finishRelayRemoval(it) } ?: RelayResult.Ok(JSONObject())
     }
+
+    /** The relay delete of a removal; on success (or 401: already gone) the local registration goes too. */
+    private fun finishRelayRemoval(me: Identity): RelayResult {
+        val r = relay.deleteDevice(me.token)
+        if (r is RelayResult.Ok || (r is RelayResult.Fail && r.status == 401)) {
+            store.clearRegistration()
+            return RelayResult.Ok(JSONObject())
+        }
+        Log.w(TAG, "relay removal still pending: ${(r as RelayResult.Fail).code}")
+        return r
+    }
+
+    /** Removed locally, but the relay still has this phone (its delete failed). */
+    fun removalPending(): Boolean = store.relayRemoved && store.identity() != null
 
     // ---- sending -------------------------------------------------------------------------
 

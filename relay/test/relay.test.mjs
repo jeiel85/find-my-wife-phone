@@ -2,7 +2,7 @@
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { generateKeyPairSync } from "node:crypto";
 import { handle, cleanup } from "../src/index.js";
 import { _resetFcmCacheForTests, sendData, parseServiceAccount } from "../src/fcm.js";
@@ -16,7 +16,9 @@ class Stmt {
 }
 function d1() {
   const db = new DatabaseSync(":memory:");
-  db.exec(readFileSync(new URL("../migrations/0001_init.sql", import.meta.url), "utf8"));
+  for (const f of readdirSync(new URL("../migrations/", import.meta.url)).filter((n) => n.endsWith(".sql")).sort()) {
+    db.exec(readFileSync(new URL(`../migrations/${f}`, import.meta.url), "utf8"));
+  }
   return {
     raw: db,
     prepare: (sql) => new Stmt(db, sql),
@@ -273,8 +275,10 @@ test("cleanup drops dead and abandoned devices but keeps quiet paired ones", asy
   const lonely = await register("l"); // never paired
   const { a: c, b: d } = await pair2();
   await call("POST", "/v1/invites", { token: lonely.token, body: { inviteId: "y".repeat(43) } });
-  // d's app was removed: FCM reported its token dead
-  env.DB.raw.prepare("UPDATE devices SET fcm_token = NULL WHERE id = ?").run(d.deviceId);
+  // d's app was removed: FCM reports its token dead on c's next message
+  fcmMode = "dead";
+  assert.equal((await call("POST", "/v1/messages", { token: c.token, body: { to: d.deviceId, env: ENV } })).status, 410);
+  fcmMode = "ok";
 
   await cleanup(env, clock + 29 * DAY);
   assert.equal(count("devices"), 5);
@@ -289,6 +293,22 @@ test("cleanup drops dead and abandoned devices but keeps quiet paired ones", asy
   assert.equal(count("invites"), 0);
   assert.equal(count("links"), 2);
   assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 202);
+});
+
+test("dead-token grace period counts from the invalidation, not the last call", async () => {
+  const DAY = 86_400_000;
+  const { a, b } = await pair();
+  clock += 60 * DAY; // b has been quiet for two months, still paired
+  fcmMode = "dead";
+  assert.equal((await call("POST", "/v1/messages", { token: a.token, body: { to: b.deviceId, env: ENV } })).status, 410);
+  fcmMode = "ok";
+  await cleanup(env, clock + DAY);
+  assert.equal(count("devices"), 2); // just invalidated: within its 30 days
+  // b comes back with a fresh token in time and stays
+  assert.equal((await call("PUT", "/v1/devices/me", { token: b.token, body: { fcmToken: FCM + "new" } })).status, 200);
+  await cleanup(env, clock + 31 * DAY);
+  assert.equal(count("devices"), 2);
+  assert.equal(count("links"), 2);
 });
 
 function count(table) { return env.DB.raw.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get().c; }

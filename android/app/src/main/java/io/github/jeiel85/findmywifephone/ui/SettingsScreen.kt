@@ -172,7 +172,20 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
                 onClick = { open("https://jeiel85.github.io/find-my-wife-phone/#privacy") }) { Chevron() }
             ListRow("오픈소스 · GitHub", "버전 ${BuildConfig.VERSION_NAME} · MIT 라이선스", Icons.Rounded.Code, P.c.ink,
                 onClick = { open("https://github.com/jeiel85/find-my-wife-phone") }) { Chevron() }
-            if (registration == Registration.Removed) {
+            val pending = remember(registration, removing) { Hub.removalPending() }
+            if (registration == Registration.Removed && pending) {
+                // Pairs are gone already; only the relay's copy is left. Tapping retries the delete.
+                ListRow("서버에서 아직 지우지 못했어요", removeError ?: "인터넷에 연결되면 앱을 열 때 다시 지워요. 눌러서 지금 다시 시도할 수 있어요",
+                    Icons.Rounded.DeleteForever, P.c.danger, onClick = {
+                        if (!removing) {
+                            removing = true
+                            scope.launch {
+                                removeError = (Hub.removeFromRelay() as? RelayResult.Fail)?.let { "지우지 못했어요 · ${errorText(it.code)}" }
+                                removing = false
+                            }
+                        }
+                    }) { Chevron() }
+            } else if (registration == Registration.Removed) {
                 ListRow("서버에서 이 폰을 지웠어요", "다시 쓰려면 새 기기 연결로 QR을 주고받으세요", Icons.Rounded.DeleteForever, P.c.inkSoft)
             } else if (registration != Registration.NotConfigured) {
                 ListRow("서버에서 이 폰 지우기", removeError ?: "앱을 지우기 전에 누르면 중계 서버에 남은 기기 ID·푸시 토큰·연결이 모두 지워져요",
@@ -193,6 +206,7 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
                 Text(
                     (if (peers.isEmpty()) "" else "연결된 가족(${peers.joinToString { it.name }})과의 연결도 모두 해제돼요. ") +
                         "중계 서버에서 이 폰의 기기 ID, 푸시 토큰, 연결 정보를 지우고, 다시 연결하기 전까지 서버에 등록하지 않아요. " +
+                        "인터넷이 끊겨 서버에서 바로 지우지 못하면 다음에 앱을 열 때 다시 지워요. " +
                         "폰에 남은 기록은 그대로예요.",
                 )
             },
