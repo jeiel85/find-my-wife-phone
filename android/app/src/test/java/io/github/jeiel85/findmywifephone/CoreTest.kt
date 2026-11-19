@@ -6,6 +6,7 @@ import io.github.jeiel85.findmywifephone.core.Msg
 import io.github.jeiel85.findmywifephone.core.PairOffer
 import io.github.jeiel85.findmywifephone.core.PeerStatus
 import io.github.jeiel85.findmywifephone.core.RingState
+import io.github.jeiel85.findmywifephone.core.versionName
 import io.github.jeiel85.findmywifephone.crypto.Crypto
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -81,7 +82,7 @@ class CoreTest {
     }
 
     @Test fun messagesRoundTrip() {
-        val st = PeerStatus(snoozeUntil = 99, locationPolicy = LocationPolicy.ASK, battery = 42, charging = true)
+        val st = PeerStatus(snoozeUntil = 99, locationPolicy = LocationPolicy.ASK, battery = 42, charging = true, appVersion = 305)
         val all = listOf(
             Msg.Hello("남편", "Galaxy S24", ack = false, status = st),
             Msg.Hello("아내", "", ack = true, status = null),
@@ -105,6 +106,14 @@ class CoreTest {
         val unknownState = Msg.parse("""{"v":1,"id":"x","ts":1,"type":"ring-state","reqId":"r","state":"???"}""")
         assertNotNull(unknownState)
         assertEquals(RingState.ERROR, (unknownState as Msg.RingUpdate).state)
+    }
+
+    /** 0.3.4 and older send no "ver": they read as 0, which the home screen shows as an old version. */
+    @Test fun appVersionIsOptionalOnTheWire() {
+        assertEquals(0, PeerStatus.fromJson(PeerStatus(battery = 50).toJson())!!.appVersion)
+        assertTrue(!PeerStatus(appVersion = 0).toJson().has("ver"))
+        assertEquals(305, PeerStatus.fromJson(PeerStatus(appVersion = 305).toJson())!!.appVersion)
+        assertEquals("0.3.5", versionName(305))
     }
 
     @Test fun snoozeForeverIsSnoozed() {

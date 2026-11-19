@@ -68,6 +68,7 @@ fun NearbyCard(peer: Peer) {
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
     val permitted = remember(tick, refresh) { NearbyPermissions.granted(context) }
     val btOn = remember(tick, refresh) { NearbyPermissions.bluetoothOn(context) }
+    val needsLocation = remember(tick, refresh) { NearbyPermissions.locationServicesNeeded(context) }
     val theirs = peer.status?.beacon
 
     Column(
@@ -83,13 +84,19 @@ fun NearbyCard(peer: Peer) {
         val preview = NearbyDebug.reading.takeIf { BuildConfig.DEBUG }
         when {
             preview != null -> Gauge(preview)
-            theirs == false -> Note("${peer.name} 폰의 블루투스가 꺼져 있어 거리는 알 수 없어요", "소리를 따라가 보세요.")
+            theirs == false -> Note("${peer.name} 폰이 블루투스 신호를 보내지 못해 거리는 알 수 없어요",
+                "블루투스가 꺼져 있거나 권한이 없을 수 있어요. 소리를 따라가 보세요.")
             !permitted -> Note("근처 기기 권한을 허용하면 얼마나 가까운지 보여 드려요", null) {
                 PillButton("허용하기", null, P.c.sofa, P.c.surface, Modifier.padding(top = 12.dp)) { ask.launch(NearbyPermissions.required) }
             }
             !btOn -> Note("블루투스를 켜면 얼마나 가까운지 보여 드려요", null) {
                 PillButton("블루투스 설정", null, P.c.sofa, P.c.surface, Modifier.padding(top = 12.dp)) {
                     context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                }
+            }
+            needsLocation -> Note("위치를 켜면 얼마나 가까운지 보여 드려요", "Android 11 이하에서는 블루투스 검색에 위치 서비스가 켜져 있어야 해요.") {
+                PillButton("위치 설정", null, P.c.sofa, P.c.surface, Modifier.padding(top = 12.dp)) {
+                    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                 }
             }
             else -> Live(peer)
@@ -122,6 +129,8 @@ private fun Live(peer: Peer) {
         }
     }
     val r by scanner.reading.collectAsStateWithLifecycle()
+    val failure by scanner.failure.collectAsStateWithLifecycle()
+    failure?.let { Note(it, "소리를 따라가 보세요."); return }
     Gauge(r)
 }
 

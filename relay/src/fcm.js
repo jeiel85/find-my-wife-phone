@@ -53,31 +53,53 @@ async function accessToken(sa, fetchFn, now) {
   return cached.accessToken;
 }
 
-/**
- * Sends a data-only, high-priority message.
- * @returns {"ok" | "unregistered" | "error"} — "unregistered" means the token is dead for good.
- */
 // FCM rejects the whole message (400 INVALID_ARGUMENT) when a data key is one of these.
 const RESERVED = /^(from|notification|message_type|collapse_key)$|^(google|gcm)\./;
 
-export async function sendData(sa, fcmToken, data, ttlSec, fetchFn = fetch, now = Date.now()) {
+const RETRY_DELAYS_MS = [300, 1000];
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** FCM's own advice: 5xx and 429 are worth retrying with backoff; so is a dropped connection. */
+function retryable(status) { return status === 429 || status >= 500; }
+
+/**
+ * Sends a data-only, high-priority message, retrying transient FCM failures twice.
+ * @returns {"ok" | "unregistered" | "error"} — "unregistered" means the token is dead for good.
+ */
+export async function sendData(sa, fcmToken, data, ttlSec, fetchFn = fetch, now = Date.now(), sleep = wait) {
   const bad = Object.keys(data).find((k) => RESERVED.test(k));
   if (bad) throw new Error(`FCM data key "${bad}" is reserved`);
-  const token = await accessToken(sa, fetchFn, now);
-  const res = await fetchFn(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      message: { token: fcmToken, data, android: { priority: "HIGH", ttl: `${ttlSec}s` } },
-    }),
-  });
+  for (let attempt = 0; ; attempt++) {
+    const outcome = await sendOnce(sa, fcmToken, data, ttlSec, fetchFn, now);
+    // A ring is only useful within seconds, so two quick retries and then let the user try again.
+    if (outcome !== "retry") return outcome;
+    if (attempt >= RETRY_DELAYS_MS.length) return "error";
+    await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+}
+
+async function sendOnce(sa, fcmToken, data, ttlSec, fetchFn, now) {
+  let res;
+  try {
+    const token = await accessToken(sa, fetchFn, now);
+    res = await fetchFn(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        message: { token: fcmToken, data, android: { priority: "HIGH", ttl: `${ttlSec}s` } },
+      }),
+    });
+  } catch (e) {
+    console.warn(`fcm send threw: ${e?.message ?? e}`);
+    return "retry";
+  }
   if (res.ok) return "ok";
   let status = "";
   try { status = (await res.json())?.error?.details?.find((d) => d.errorCode)?.errorCode ?? ""; } catch { /* body not JSON */ }
   if (res.status === 404 || status === "UNREGISTERED") return "unregistered";
-  if (res.status === 401) cached = null; // force a fresh OAuth token next time
   console.warn(`fcm send failed: ${res.status} ${status}`);
-  return "error";
+  if (res.status === 401) { cached = null; return "retry"; } // stale OAuth token: fetch a fresh one
+  return retryable(res.status) ? "retry" : "error";
 }
 
 export function _resetFcmCacheForTests() { cached = null; }

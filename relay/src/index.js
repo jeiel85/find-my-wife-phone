@@ -19,7 +19,13 @@ const LIMITS = {
   invite: { max: 20, windowMs: 3600_000 },     // per device
   join: { max: 20, windowMs: 3600_000 },       // per device
   message: { max: 60, windowMs: 600_000 },     // per (from, to)
+  messageDevice: { max: 120, windowMs: 600_000 }, // per sender, across all its pairs
 };
+
+// Cleanup (daily cron). A device's seen_at only moves when it calls the relay, so a quiet phone
+// that is still paired must never be dropped for being quiet alone.
+const DEAD_TOKEN_MS = 30 * 86_400_000;   // since FCM said its token is gone (dead_at), with no new token since
+const IDLE_UNLINKED_MS = 90 * 86_400_000; // paired with nobody and silent this long
 
 class HttpError extends Error {
   constructor(status, code, message) { super(message ?? code); this.status = status; this.code = code; }
@@ -104,9 +110,9 @@ async function wake(env, deps, db, targetId, data, ttlSec) {
   const target = await db.prepare("SELECT fcm_token FROM devices WHERE id = ?1").bind(targetId).first();
   if (!target?.fcm_token) throw new HttpError(410, "peer_unreachable");
   const sa = parseServiceAccount(env.FCM_SERVICE_ACCOUNT);
-  const result = await sendData(sa, target.fcm_token, data, ttlSec, deps.fetch, deps.now());
+  const result = await sendData(sa, target.fcm_token, data, ttlSec, deps.fetch, deps.now(), deps.sleep);
   if (result === "unregistered") {
-    await db.prepare("UPDATE devices SET fcm_token = NULL WHERE id = ?1").bind(targetId).run();
+    await db.prepare("UPDATE devices SET fcm_token = NULL, dead_at = ?1 WHERE id = ?2").bind(deps.now(), targetId).run();
     throw new HttpError(410, "peer_unreachable");
   }
   if (result !== "ok") throw new HttpError(502, "push_failed");
@@ -138,7 +144,7 @@ async function route(req, env, deps) {
     if (req.method === "PUT") {
       const body = await readJson(req);
       const fcm = requireFcmToken(body.fcmToken);
-      await db.prepare("UPDATE devices SET fcm_token = ?1, seen_at = ?2 WHERE id = ?3").bind(fcm, now, me.id).run();
+      await db.prepare("UPDATE devices SET fcm_token = ?1, seen_at = ?2, dead_at = NULL WHERE id = ?3").bind(fcm, now, me.id).run();
       return json(200, { schema: 1, ok: true });
     }
     if (req.method === "DELETE") {
@@ -209,6 +215,7 @@ async function route(req, env, deps) {
     const link = await db.prepare("SELECT 1 AS ok FROM links WHERE a = ?1 AND b = ?2").bind(me.id, to).first();
     if (!link) throw new HttpError(403, "not_paired");
     await hit(db, `msg:${me.id}:${to}`, LIMITS.message, now);
+    await hit(db, `msgdev:${me.id}`, LIMITS.messageDevice, now);
     await wake(env, deps, db, to, { k: "msg", src: me.id, env: envelope }, ttl);
     return json(202, { schema: 1, accepted: true });
   }
@@ -233,9 +240,18 @@ export async function handle(req, env, deps = { fetch, now: Date.now }) {
 }
 
 export async function cleanup(env, now = Date.now()) {
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM invites WHERE expires_at <= ?1").bind(now),
-    env.DB.prepare("DELETE FROM rate WHERE win < ?1").bind(now - 86_400_000),
+  const db = env.DB;
+  await db.batch([
+    db.prepare("DELETE FROM invites WHERE expires_at <= ?1").bind(now),
+    db.prepare("DELETE FROM rate WHERE win < ?1").bind(now - 86_400_000),
+    // Reinstalled or removed apps: the old registration can never be woken again.
+    db.prepare(
+      `DELETE FROM devices WHERE (fcm_token IS NULL AND dead_at < ?1)
+          OR (seen_at < ?2 AND NOT EXISTS (SELECT 1 FROM links WHERE links.a = devices.id OR links.b = devices.id))`)
+      .bind(now - DEAD_TOKEN_MS, now - IDLE_UNLINKED_MS),
+    // Whatever pointed at a removed device (also rows left behind before this cleanup existed).
+    db.prepare("DELETE FROM links WHERE a NOT IN (SELECT id FROM devices) OR b NOT IN (SELECT id FROM devices)"),
+    db.prepare("DELETE FROM invites WHERE owner NOT IN (SELECT id FROM devices)"),
   ]);
 }
 

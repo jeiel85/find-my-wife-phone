@@ -34,7 +34,8 @@ sealed interface UpdateState {
     data class Installing(val release: Release) : UpdateState
     /** Android wants the owner's tap (first self-update, or the system does not allow silent ones). */
     data class NeedsConfirm(val release: Release, val confirm: Intent) : UpdateState
-    data class Failed(val reason: String) : UpdateState
+    /** [transient] = worth retrying soon (network, GitHub rate limit or outage). */
+    data class Failed(val reason: String, val transient: Boolean = false) : UpdateState
 }
 
 /**
@@ -98,7 +99,9 @@ object Updater {
                 return null
             }
             if (code != 200) {
-                _state.value = UpdateState.Failed("GitHub 응답 $code")
+                // 403/429: unauthenticated API limit (60 an hour per IP); 5xx: GitHub is having trouble.
+                _state.value = if (code == 403 || code == 429) UpdateState.Failed("GitHub 요청 한도에 걸렸어요. 잠시 뒤 다시 확인해요", transient = true)
+                else UpdateState.Failed("GitHub 응답 $code", transient = code >= 500)
                 return null
             }
             val release = Releases.parse(conn.inputStream.bufferedReader().use { it.readText() })
@@ -110,7 +113,7 @@ object Updater {
             }
         } catch (e: Exception) {
             Log.w(TAG, "check failed", e)
-            _state.value = UpdateState.Failed("인터넷 연결을 확인해 주세요")
+            _state.value = UpdateState.Failed("인터넷 연결을 확인해 주세요", transient = true)
             null
         }
     }
@@ -154,7 +157,8 @@ object Updater {
             out.delete()
             _state.value = UpdateState.Failed(
                 if (e.message?.startsWith("checksum") == true || e is SecurityException) "받은 파일을 검증하지 못해 설치하지 않았어요"
-                else "내려받지 못했어요")
+                else "내려받지 못했어요",
+                transient = e is java.io.IOException)
             null
         }
     }

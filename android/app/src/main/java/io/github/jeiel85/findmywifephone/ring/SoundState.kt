@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioManager
 import android.util.Log
 import io.github.jeiel85.findmywifephone.core.Hub
+import io.github.jeiel85.findmywifephone.ui.Notifier
 import org.json.JSONObject
 
 /**
@@ -51,6 +52,11 @@ object SoundState {
             if (filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN && nm.currentInterruptionFilter != filter) {
                 runCatching { nm.setInterruptionFilter(filter) }
                     .onFailure { Log.w(TAG, "could not restore DND", it) }
+                // Android 15+ turns an app's change into its own rule; the owner's mode may stay off.
+                if (nm.currentInterruptionFilter != filter) {
+                    Log.w(TAG, "DND not restored: wanted $filter, is ${nm.currentInterruptionFilter}")
+                    Notifier.dndNotRestored(context)
+                }
             }
         }
         Hub.store.saveSoundRestore(null)

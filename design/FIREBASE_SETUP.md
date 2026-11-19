@@ -38,3 +38,19 @@ scripts/finish-firebase.sh
 - 테스트 → 서명된 릴리스 APK `dist/find-my-wife-phone.apk`
 
 키를 다운로드 폴더에 계속 둘 필요는 없습니다. 스크립트가 끝나면 지워도 됩니다.
+
+## 서비스 계정 키 교체 (유출이 의심될 때, 또는 정기 교체)
+
+이 키로는 이 Firebase 프로젝트의 **모든 폰에 푸시를 보낼 수 있습니다**(메시지 내용은 종단 암호화라 읽거나 위조할 수는 없지만, 아무 내용이나 깨울 수는 있음).
+유출이 의심되면 바로, 아니면 1년에 한 번쯤 아래 순서로 바꿉니다. 앱이나 폰은 건드리지 않아도 됩니다.
+
+1. Firebase 콘솔 → **프로젝트 설정** → **서비스 계정** → **새 비공개 키 생성**으로 새 JSON을 받습니다.
+2. 중계 Worker 비밀값을 새 키로 바꿉니다(Git Bash, 저장소 루트):
+   ```bash
+   cd relay && npx wrangler secret put FCM_SERVICE_ACCOUNT < ~/Downloads/<새 키>.json
+   ```
+   비밀값은 바로 반영됩니다. 옛 OAuth 토큰은 Worker 메모리에서 최대 1시간 남지만, 3단계에서 옛 키를 지우면 그 토큰도 곧 무효가 됩니다.
+3. 동작 확인: 한 폰에서 **울리기 → 그만 울리기**가 되는지 봅니다. `npx wrangler tail`에 `fcm send failed: 401`이 이어지면 2단계를 다시 확인하세요.
+4. **옛 키 삭제**: Google Cloud 콘솔 → IAM 및 관리자 → **서비스 계정** → `firebase-adminsdk-…` → **키** 탭에서 옛 키 ID를 삭제합니다.
+   (Firebase 콘솔에는 삭제 버튼이 없습니다.) 이 단계를 해야 유출된 키가 실제로 막힙니다.
+5. 로컬 사본 `%LOCALAPPDATA%\find-my-wife-phone\service-account.json`을 새 키로 바꾸고, 다운로드 폴더의 JSON은 지웁니다.

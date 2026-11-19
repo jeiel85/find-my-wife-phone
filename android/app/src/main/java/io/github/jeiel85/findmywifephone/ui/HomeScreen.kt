@@ -63,7 +63,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.jeiel85.findmywifephone.BuildConfig
 import io.github.jeiel85.findmywifephone.core.Hub
+import io.github.jeiel85.findmywifephone.core.versionName
 import io.github.jeiel85.findmywifephone.core.LocateState
 import io.github.jeiel85.findmywifephone.core.Msg
 import io.github.jeiel85.findmywifephone.core.Outgoing
@@ -204,6 +206,11 @@ private fun PeerPanel(peer: Peer, out: Outgoing?, onHistory: () -> Unit) {
                 }
             }
             if (peer.model.isNotBlank()) Text(peer.model, fontSize = 12.sp, color = P.c.inkSoft.copy(alpha = 0.8f))
+            if (st != null && st.appVersion < BuildConfig.VERSION_CODE) {
+                // Older phones miss newer fixes (e.g. 0.3.1 and below ring on when the stop overtakes the ring).
+                Text("${peer.name}님 폰의 포너디가 옛 버전(${if (st.appVersion > 0) versionName(st.appVersion) else "0.3.4 이하"})이에요 · 업데이트를 권해요",
+                    fontSize = 12.sp, color = P.c.amber, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
     if (snoozed) {
@@ -353,28 +360,30 @@ private fun statusColor(o: Outgoing): Color = when {
 fun describe(o: Outgoing, name: String): String {
     o.sendError?.let { return "보내지 못했어요 · ${errorText(it)}" }
     if (!o.sent) return "요청을 보내는 중…"
-    if (o.noResponse) return "응답이 없어요. ${name}님 폰이 꺼져 있거나 인터넷에 연결되지 않았을 수 있어요."
+    if (o.noResponse) return if (o.uncertain) "전해졌는지 확인하지 못했어요. 인터넷 연결을 확인하고 다시 해 주세요"
+        else "응답이 없어요. ${name}님 폰이 꺼져 있거나 인터넷에 연결되지 않았을 수 있어요."
     if (o.kind == RequestKind.RING && o.active) {
         if (o.stopping) return "멈추는 중…"
         o.stopError?.let { return "멈추지 못했어요 · ${errorText(it)}. 다시 눌러 주세요" }
     }
     return when (o.kind) {
         RequestKind.RING -> when (o.ring) {
-            null -> "요청을 보냈어요 · 응답 기다리는 중…"
+            // The send's answer was lost, but the relay may have passed it on: it may still ring.
+            null -> if (o.uncertain) "연결이 끊겨 전해졌는지 몰라요 · 울릴 수도 있어요" else "요청을 보냈어요 · 응답 기다리는 중…"
             RingState.COUNTDOWN -> "${name}님 폰에 요청이 떴어요. 곧 울려요"
             RingState.RINGING -> "울리는 중이에요 🔔 소리를 따라가 보세요"
             RingState.FOUND -> "찾았대요! 🎉"
             RingState.DECLINED -> "${name}님이 요청을 거절했어요"
             RingState.SNOOZED -> "${name}님은 지금 요청을 받지 않고 있어요"
             RingState.STOPPED -> "울림을 멈췄어요"
-            RingState.TIMEOUT -> "2분 동안 울리고 멈췄어요"
+            RingState.TIMEOUT -> "울리는 시간이 다 돼서 멈췄어요"
             RingState.BUSY -> "이미 다른 요청으로 울리는 중이에요"
             RingState.ERROR -> "${name}님 폰에서 소리를 내지 못했어요"
         }
         RequestKind.LOCATE -> when {
             o.result != null -> "위치가 도착했어요"
             else -> when (o.locate) {
-                null -> "요청을 보냈어요 · 응답 기다리는 중…"
+                null -> if (o.uncertain) "연결이 끊겨 전해졌는지 몰라요 · 응답 기다리는 중…" else "요청을 보냈어요 · 응답 기다리는 중…"
                 LocateState.COUNTDOWN -> "${name}님에게 알림이 갔어요. 곧 위치가 도착해요"
                 LocateState.ASKING -> "${name}님이 허용하면 위치가 도착해요"
                 LocateState.LOCATING -> "위치를 찾는 중…"

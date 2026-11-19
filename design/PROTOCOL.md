@@ -32,14 +32,18 @@
 | DELETE | `/v1/devices/me` | ✓ | – | 200 (링크·초대 함께 삭제) | 401 |
 | POST | `/v1/invites` | ✓ | `{inviteId, ttlSec≤600}` | 201 `{inviteId, expiresAt}` | 400 `invalid_invite` · 429 |
 | POST | `/v1/invites/{inviteId}/join` | ✓ | `{pub, env}` | 200 `{peerId}` | 404 `invite_not_found` · 410 `invite_expired` · 400 `self_pairing` · 410/502 (초대자에게 푸시 실패, 초대는 유지) |
-| POST | `/v1/messages` | ✓ | `{to, env, ttlSec 10..86400}` | 202 | 403 `not_paired` · 410 `peer_unreachable` · 429 (쌍당 10분 60회) · 502 `push_failed` |
+| POST | `/v1/messages` | ✓ | `{to, env, ttlSec 10..86400}` | 202 | 403 `not_paired` · 410 `peer_unreachable` · 429 (쌍당 10분 60회, 보내는 기기당 10분 120회) · 502 `push_failed` |
 | DELETE | `/v1/links/{peerId}` | ✓ | – | 200 (양방향 삭제) | 401 |
 
 - `deviceId`: 22자 base64url(16바이트 난수). `inviteId`: 43자 base64url = SHA-256(pairSecret).
 - `pub`: P-256 비압축 점 65바이트의 base64url(87자). `env`: 아래 봉투, 3000자 이하.
 - FCM 데이터: 페어링 `{k: "pair", src, pub, env}`, 메시지 `{k: "msg", src, env}` (`src` = 보낸 기기 ID. `from`·`notification`·`message_type`·`google.*`·`gcm.*`는 FCM 예약어라 쓸 수 없음). Android `priority: HIGH`, `ttl`은 요청값.
   FCM이 `UNREGISTERED`/404를 주면 그 기기의 FCM 토큰을 지우고 410 `peer_unreachable`을 돌려줍니다(앱이 다음 실행 때 다시 등록).
-- 매일 04:17 UTC cron이 만료된 초대와 하루 지난 속도 제한 카운터를 지웁니다.
+- 매일 04:17 UTC cron이 만료된 초대와 하루 지난 속도 제한 카운터를 지웁니다. 같은 cron이 다시는 깨울 수 없는 기기도 지웁니다:
+  FCM이 토큰을 무효라고 한 때(`dead_at`)부터 30일 동안 새 토큰을 보내지 않은 기기, 어떤 기기와도 연결되지 않은 채 90일 동안 호출이 없던 기기. 지운 기기를 가리키는 연결·초대도 함께 지웁니다.
+  연결된 기기는 조용하다는 이유만으로 지우지 않습니다(받기만 하는 폰은 몇 달씩 중계를 부르지 않을 수 있음).
+- 중계는 FCM의 5xx·429·연결 끊김을 0.3초, 1초 뒤 두 번 다시 시도한 뒤에야 502 `push_failed`를 돌려줍니다.
+- 앱은 `401`을 받으면 등록을 지우고 새로 등록한 뒤, 초대 만들기·QR 참여는 한 번 다시 시도합니다.
 
 ## 페어링 (QR)
 

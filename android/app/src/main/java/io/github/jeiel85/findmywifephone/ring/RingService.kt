@@ -69,6 +69,7 @@ class RingService : Service() {
         val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
         if (Hub.store.wasCancelled(reqId)) {
             // The cancel was handled after Hub let this ring through but before it got here.
+            Log.i(TAG, "ring $reqId skipped: cancelled before the countdown started")
             Hub.history.update(reqId, Direction.IN, RingState.STOPPED.wire)
             if (_ui.value == null) {
                 // startForegroundService() must be answered by startForeground() even when nothing rings.
@@ -127,6 +128,13 @@ class RingService : Service() {
         startRinging()
     }
 
+    /** The Bluetooth stack refused the beacon after it started: say so, so the requester's gauge stops waiting. */
+    private fun onBeaconFailed() {
+        if (beacon == null || peerId.isEmpty()) return
+        beaconState = false
+        Hub.reply(peerId, Msg.Status(Hub.myStatus()), ttlSec = 120)
+    }
+
     private fun countdownTick() {
         val ui = _ui.value ?: return
         if (ui.ringing) return
@@ -166,7 +174,9 @@ class RingService : Service() {
         if (settings.ringFlash) flash = Flash(this).also { it.start() }
         if (!ui.test) {
             // Lets the requester's phone show how close this one is (nearby gauge).
-            beaconState = Hub.store.peer(peerId)?.let { p -> BeaconAdvertiser(this, p.pairKey).also { beacon = it }.start() } ?: false
+            beaconState = Hub.store.peer(peerId)?.let { p ->
+                BeaconAdvertiser(this, p.pairKey, onFailed = ::onBeaconFailed).also { beacon = it }.start()
+            } ?: false
         }
         Notifier.update(this, Notifier.ID_RING, Notifier.ringing(this, _ui.value!!))
         if (!ui.test) {

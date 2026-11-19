@@ -1,0 +1,40 @@
+# Builds both store channels on every PR, so a change to one channel's SelfUpdate/UpdateSection
+# cannot quietly break the other (hardening #11). No secrets: without google-services.json the app
+# builds in its "push not configured" mode, and debug builds need no release key.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # node:sqlite without a flag
+      - run: npm test
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests and debug builds, both channels
+        run: ./gradlew --console=plain testGithubDebugUnitTest testPlayDebugUnitTest assembleGithubDebug assemblePlayDebug
