@@ -120,13 +120,15 @@ object Hub {
         store = Store(context)
         history = History(context)
         relay = Relay(BuildConfig.RELAY_URL)
-        Clock.offsetMs = store.clockOffset
+        // The monotonic anchor restarts at boot; an older one would be off by the time the phone was down.
+        val boot = android.provider.Settings.Global.getInt(context.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
+        if (boot >= 0 && store.clockBoot == boot) store.clockBase?.let { Clock.anchor(it) }
         relay.onServerDate = { date, sent, received ->
-            Clock.estimate(date, sent, received)?.let { off ->
+            Clock.estimate(date, sent, received)?.let { b ->
                 // Whole-second Date headers jitter by a second; only a real change is worth a write.
-                if (kotlin.math.abs(off - Clock.offsetMs) > 1_000) {
-                    Clock.offsetMs = off
-                    store.clockOffset = off
+                if (kotlin.math.abs(b - (Clock.base ?: Long.MIN_VALUE / 2)) > 1_000) {
+                    Clock.anchor(b)
+                    store.setClockAnchor(b, boot)
                 }
             }
         }
@@ -174,7 +176,8 @@ object Hub {
         store.keyPair()
         val current = store.identity()
         if (current != null) {
-            if (store.registeredFcmToken() != fcm) {
+            // Also once per boot with the same token: the call's Date header anchors Clock.
+            if (store.registeredFcmToken() != fcm || !Clock.anchored) {
                 when (val r = relay.updateFcmToken(current.token, fcm)) {
                     is RelayResult.Ok -> store.setRegisteredFcmToken(fcm)
                     is RelayResult.Fail -> if (r.status == 401) {
@@ -558,7 +561,7 @@ object Hub {
         // Both clocks relay-corrected (Clock); an older sender's own clock may still be off.
         val age = Clock.now() - msg.ts
         if (age > MAX_REQUEST_AGE_MS) {
-            Log.i(TAG, "ring ${msg.reqId} skipped: ${age / 1000}s old (clock offset ${Clock.offsetMs / 1000}s)")
+            Log.i(TAG, "ring ${msg.reqId} skipped: ${age / 1000}s old (clock offset ${Clock.offsetMs() / 1000}s)")
             history.update(msg.reqId, Direction.IN, "late")
             return
         }

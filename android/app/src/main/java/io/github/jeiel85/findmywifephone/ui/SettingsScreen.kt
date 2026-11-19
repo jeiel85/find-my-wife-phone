@@ -155,7 +155,7 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
         }
 
         Group("확실히 울리게 하는 설정") {
-            if (Clock.skewed) ClockRow(Clock.offsetMs) {
+            if (Clock.skewed()) ClockRow(Clock.offsetMs()) {
                 runCatching { context.startActivity(Intent(android.provider.Settings.ACTION_DATE_SETTINGS)) }
             }
             PermissionList(settings.locationPolicy)

@@ -112,10 +112,10 @@ class Store(context: Context) {
         get() = prefs.getBoolean("relayRemoved", false)
         set(v) = prefs.edit().putBoolean("relayRemoved", v).apply()
 
-    /** Relay time minus this phone's time (core/Clock). */
-    var clockOffset: Long
-        get() = prefs.getLong("clockOffset", 0L)
-        set(v) = prefs.edit().putLong("clockOffset", v).apply()
+    /** core/Clock's anchor (relay time minus elapsedRealtime) and the boot it belongs to. */
+    val clockBase: Long? get() = if (prefs.contains("clockBase")) prefs.getLong("clockBase", 0L) else null
+    val clockBoot: Int get() = prefs.getInt("clockBoot", -1)
+    fun setClockAnchor(base: Long, boot: Int) = prefs.edit().putLong("clockBase", base).putInt("clockBoot", boot).apply()
 
     /** App version last told to the peers; a newer install announces itself once (Hub.init). */
     var announcedVersion: Int

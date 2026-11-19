@@ -15,7 +15,7 @@ sealed class RelayResult {
 
 /** Thin blocking client for the relay API (design/PROTOCOL.md §중계 API). Call off the main thread. */
 class Relay(private val baseUrl: String) {
-    /** Every HTTP answer's `Date` header with when the call left and came back (Clock.estimate). */
+    /** Every HTTP answer's `Date` header with when the call left and came back, in elapsedRealtime (Clock.estimate). */
     @Volatile var onServerDate: ((dateMs: Long, sentAt: Long, receivedAt: Long) -> Unit)? = null
 
     fun register(fcmToken: String) = call("POST", "/v1/devices", null, JSONObject().put("fcmToken", fcmToken))
@@ -36,7 +36,7 @@ class Relay(private val baseUrl: String) {
             return RelayResult.Fail(0, "network")
         }
         return try {
-            val sentAt = System.currentTimeMillis()
+            val sentAt = android.os.SystemClock.elapsedRealtime()
             conn.requestMethod = method
             conn.connectTimeout = 10_000
             conn.readTimeout = 15_000
@@ -48,7 +48,7 @@ class Relay(private val baseUrl: String) {
                 conn.outputStream.use { it.write(body.toString().toByteArray()) }
             }
             val status = conn.responseCode
-            onServerDate?.invoke(conn.date, sentAt, System.currentTimeMillis())
+            onServerDate?.invoke(conn.date, sentAt, android.os.SystemClock.elapsedRealtime())
             val text = (if (status in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()
             val json = runCatching { JSONObject(text) }.getOrDefault(JSONObject())
