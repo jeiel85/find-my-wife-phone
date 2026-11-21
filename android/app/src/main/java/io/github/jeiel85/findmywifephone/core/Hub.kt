@@ -166,7 +166,7 @@ object Hub {
         val st = myStatus()
         // Retry on the next start only when it might work then; a peer the relay refuses (4xx) won't.
         val done = store.peers.value.map { send(it, Msg.Status(st), ttlSec = 3600) }
-            .all { it is RelayResult.Ok || (it is RelayResult.Fail && it.status in 400..499) }
+            .all { settled(it) }
         if (done) store.announcedVersion = BuildConfig.VERSION_CODE
     }
 
@@ -431,9 +431,15 @@ object Hub {
             val r = send(p, msg, ttlSec = 3600)
             history.add(HistoryEntry(msg.id, now, p.id, p.name, Direction.OUT, Kind.BATTERY,
                 if (r is RelayResult.Ok) "sent" else "failed:${(r as RelayResult.Fail).code}"))
-            r is RelayResult.Ok || (r is RelayResult.Fail && r.status in 400..499)
+            settled(r)
         }.all { it }
     }
+
+    /**
+     * A send that need not be retried: delivered, or refused for good (not paired, peer gone…).
+     * 429 is only a rate-limit window (relay /v1/messages) and network/5xx failures may pass, so those retry.
+     */
+    private fun settled(r: RelayResult) = r is RelayResult.Ok || (r is RelayResult.Fail && r.status in 400..499 && r.status != 429)
 
     fun ring(peerId: String) = request(peerId, RequestKind.RING)
     fun locate(peerId: String) = request(peerId, RequestKind.LOCATE)
@@ -621,11 +627,11 @@ object Hub {
             is Msg.LocationShare -> {
                 store.putShared(peer.id, SharedLocation(msg.lat, msg.lng, msg.accuracyM, msg.fixAt, msg.note, now))
                 history.add(HistoryEntry(msg.id, now, peer.id, peer.name, Direction.IN, Kind.SHARE, "shared", msg.lat, msg.lng))
-                Notifier.locationReceived(context, peer.name, msg.note)
+                Notifier.locationReceived(context, peer.id, peer.name, msg.note)
             }
             is Msg.BatteryLow -> {
                 history.add(HistoryEntry(msg.id, now, peer.id, peer.name, Direction.IN, Kind.BATTERY, "received"))
-                Notifier.peerBatteryLow(context, peer.name, msg.status.battery)
+                Notifier.peerBatteryLow(context, peer.id, peer.name, msg.status.battery)
             }
             is Msg.Unpair -> {
                 store.removePeer(peer.id)

@@ -10,6 +10,7 @@ import io.github.jeiel85.findmywifephone.quick.Shortcuts
 import io.github.jeiel85.findmywifephone.ring.SoundState
 import io.github.jeiel85.findmywifephone.ui.Notifier
 import io.github.jeiel85.findmywifephone.update.SelfUpdate
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.launch
 
 class App : Application() {
@@ -24,8 +25,12 @@ class App : Application() {
         Hub.scope.launch {
             BatteryWatch.check(this@App) // a phone already low at start is not left waiting 15 minutes
         }
-        // Launcher shortcuts follow the pairs (names, unpairing).
-        Hub.scope.launch { Hub.store.peers.collect { Shortcuts.sync(this@App, it) } }
+        // Launcher shortcuts follow the pairs (names, unpairing). Peers also change on every status
+        // update; Android rate-limits shortcut calls from the background, so only id/name changes count.
+        Hub.scope.launch {
+            Hub.store.peers.distinctUntilChangedBy { list -> list.map { it.id to it.name } }
+                .collect { Shortcuts.sync(this@App, it) }
+        }
     }
 }
 

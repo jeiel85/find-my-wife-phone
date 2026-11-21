@@ -37,10 +37,12 @@ object Notifier {
         })
     }
 
-    private fun openApp(context: Context, screen: String? = null): PendingIntent =
-        PendingIntent.getActivity(context, screen.hashCode(),
+    /** [peer]: open the home screen on that peer (its map card / status), whatever screen the app was left on. */
+    private fun openApp(context: Context, screen: String? = null, peer: String? = null): PendingIntent =
+        PendingIntent.getActivity(context, (screen to peer).hashCode(),
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                .apply { screen?.let { putExtra(MainActivity.EXTRA_SCREEN, it) } },
+                .apply { screen?.let { putExtra(MainActivity.EXTRA_SCREEN, it) } }
+                .apply { peer?.let { putExtra(MainActivity.EXTRA_SCREEN, MainActivity.SCREEN_HOME).putExtra(MainActivity.EXTRA_PEER, it) } },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
     private fun alertScreen(context: Context): PendingIntent =
@@ -108,14 +110,14 @@ object Notifier {
         runCatching { context.getSystemService(NotificationManager::class.java).notify(id, n) }
     }
 
-    private fun info(context: Context, id: Int, title: String, text: String, screen: String? = null) =
+    private fun info(context: Context, id: Int, title: String, text: String, screen: String? = null, peer: String? = null) =
         update(context, id, NotificationCompat.Builder(context, CH_INFO)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true)
-            .setContentIntent(openApp(context, screen))
+            .setContentIntent(openApp(context, screen, peer))
             .build())
 
     fun paired(context: Context, name: String) =
@@ -137,12 +139,12 @@ object Notifier {
         context, ID_INFO_BASE + 4, "${name}님이 폰을 찾았어요",
         "요청 받지 않기 중이라 소리를 내지 않았어요.", MainActivity.SCREEN_HISTORY)
 
-    fun locationReceived(context: Context, name: String, note: ShareNote) =
-        info(context, ID_INFO_BASE + 9, "${name}님: ${note.label}", "${name}님이 위치를 보냈어요. 탭해서 지도로 보세요.")
+    fun locationReceived(context: Context, peerId: String, name: String, note: ShareNote) =
+        info(context, ID_INFO_BASE + 9, "${name}님: ${note.label}", "${name}님이 위치를 보냈어요. 탭해서 지도로 보세요.", peer = peerId)
 
-    fun peerBatteryLow(context: Context, name: String, battery: Int) = info(
+    fun peerBatteryLow(context: Context, peerId: String, name: String, battery: Int) = info(
         context, ID_INFO_BASE + 10, "${name}님 폰 배터리가 ${if (battery >= 0) "$battery%" else "거의 안"} 남았어요",
-        "폰이 꺼지면 울리거나 위치를 확인할 수 없어요. 충전하라고 알려 주거나, 필요하면 지금 위치를 확인해 두세요.")
+        "폰이 꺼지면 울리거나 위치를 확인할 수 없어요. 충전하라고 알려 주거나, 필요하면 지금 위치를 확인해 두세요.", peer = peerId)
 
     /** The system installer needs one tap; [confirm] is its own screen. */
     fun updateReady(context: Context, version: String, confirm: Intent) = update(context, ID_INFO_BASE + 5,

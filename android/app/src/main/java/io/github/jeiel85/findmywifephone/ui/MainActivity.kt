@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         intent ?: return
         intent.getStringExtra(EXTRA_SCREEN)?.let { screen = it }
+        // Only selects the peer to show; never acts (this activity is exported).
         intent.getStringExtra(EXTRA_PEER)?.let { focusPeer = it }
         PairOffer.parse(intent.dataString)?.let {
             pendingOffer = it
