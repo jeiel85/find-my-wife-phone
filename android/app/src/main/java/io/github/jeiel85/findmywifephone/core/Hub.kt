@@ -90,8 +90,9 @@ sealed class ShareOut {
     data object Locating : ShareOut()
     data object Sending : ShareOut()
     data class Sent(val note: ShareNote, val at: Long) : ShareOut()
-    data class NoLocation(val reason: NoFix) : ShareOut()
-    data class Failed(val code: String) : ShareOut()
+    /** [note] is kept so the card can offer "다시 보내기" with the same words. */
+    data class NoLocation(val reason: NoFix, val note: ShareNote) : ShareOut()
+    data class Failed(val code: String, val note: ShareNote) : ShareOut()
 
     val busy get() = this is Locating || this is Sending
 }
@@ -401,7 +402,7 @@ object Hub {
             val fix = OneFix.take(context)
             val loc = fix.getOrElse { e ->
                 val reason = (e as? NoFixException)?.reason ?: NoFix.NO_FIX
-                _shareOut.update { it + (peerId to ShareOut.NoLocation(reason)) }
+                _shareOut.update { it + (peerId to ShareOut.NoLocation(reason, note)) }
                 return@launch
             }
             _shareOut.update { it + (peerId to ShareOut.Sending) }
@@ -411,7 +412,7 @@ object Hub {
             history.add(HistoryEntry(msg.id, System.currentTimeMillis(), peer.id, peer.name, Direction.OUT, Kind.SHARE,
                 outcome, loc.latitude, loc.longitude))
             _shareOut.update {
-                it + (peerId to if (r is RelayResult.Ok) ShareOut.Sent(note, System.currentTimeMillis()) else ShareOut.Failed((r as RelayResult.Fail).code))
+                it + (peerId to if (r is RelayResult.Ok) ShareOut.Sent(note, System.currentTimeMillis()) else ShareOut.Failed((r as RelayResult.Fail).code, note))
             }
         }
     }
@@ -419,11 +420,13 @@ object Hub {
     fun dismissShareOut(peerId: String) = _shareOut.update { it - peerId }
 
     /**
-     * BatteryWatch: this phone's battery just ran low. Tells every peer once, so they can still ring or
-     * locate it before it dies. Returns whether every peer that can be reached got it.
+     * BatteryWatch: this phone's battery just ran low. Tells every peer not in [done], so they can still
+     * ring or locate it before it dies. Returns the peers this send settled (delivered, or refused for
+     * good); the rest are tried again on the next check. [historyKey] names this notice: a retry updates
+     * its history line instead of adding another.
      */
-    suspend fun sendBatteryLow(): Boolean {
-        if (store.peers.value.isEmpty() || store.identity() == null) return false
+    suspend fun sendBatteryLow(historyKey: String, done: Set<String> = emptySet()): Set<String> {
+        if (store.peers.value.none { it.id !in done } || store.identity() == null) return emptySet()
         // The last location goes along only on the owner's terms (D-13): the switch, the "auto" policy, not snoozed.
         val taken = if (lastLocationAllowed()) {
             OneFix.take(context, maxAgeMs = LAST_FIX_MAX_AGE_MS).getOrNull()
@@ -432,13 +435,13 @@ object Hub {
         // Taking a fix can take 25 s: the owner may have withdrawn consent (or unpaired) meanwhile, so read both again.
         val st = myStatus()
         val fix = taken?.takeIf { lastLocationAllowed(st) }
-        val peers = store.peers.value
-        if (peers.isEmpty()) return false
+        val peers = store.peers.value.filter { it.id !in done }
+        if (peers.isEmpty()) return emptySet()
         val now = System.currentTimeMillis()
         val results = peers.map { p ->
             val msg = Msg.BatteryLow(st, fix)
             val r = send(p, msg, ttlSec = 3600)
-            history.add(HistoryEntry(msg.id, now, p.id, p.name, Direction.OUT, Kind.BATTERY,
+            history.add(HistoryEntry("$historyKey:${p.id}", now, p.id, p.name, Direction.OUT, Kind.BATTERY,
                 if (r is RelayResult.Ok) (if (fix != null) "shared" else "sent") else "failed:${(r as RelayResult.Fail).code}",
                 fix?.lat, fix?.lng))
             p to r
@@ -446,7 +449,22 @@ object Hub {
         // Like every location this phone sends, the owner is told who got it.
         val told = results.filter { it.second is RelayResult.Ok }.map { it.first.name }
         if (fix != null && told.isNotEmpty()) Notifier.batteryLocationSent(context, told)
-        return results.all { settled(it.second) }
+        return results.filter { settled(it.second) }.map { it.first.id }.toSet()
+    }
+
+    /** Why a low-battery notice could not carry this phone's location right now; null when it can. */
+    enum class LastLocationBlock { OFF, POLICY, SNOOZED, PERMISSION, LOCATION_OFF }
+
+    fun lastLocationBlock(st: PeerStatus = myStatus()): LastLocationBlock? {
+        val s = store.settings.value
+        return when {
+            !s.batteryWarn || !s.batteryLocation -> LastLocationBlock.OFF
+            st.locationPolicy != LocationPolicy.AUTO -> LastLocationBlock.POLICY
+            st.snoozed(System.currentTimeMillis()) -> LastLocationBlock.SNOOZED
+            !OneFix.hasBackgroundPermission(context) -> LastLocationBlock.PERMISSION
+            context.getSystemService(android.location.LocationManager::class.java)?.isLocationEnabled != true -> LastLocationBlock.LOCATION_OFF
+            else -> null
+        }
     }
 
     /** May a low-battery notice carry this phone's location (settings, policy, snooze, background permission)? */
@@ -558,6 +576,12 @@ object Hub {
     fun debugShowOutgoing(peerId: String, o: Outgoing?) {
         if (!BuildConfig.DEBUG) return
         _outgoing.update { if (o == null) it - peerId else it + (peerId to o) }
+    }
+
+    /** Debug builds only (DemoActivity): shows a "내 위치 보내기" result card. */
+    fun debugShowShareOut(peerId: String, s: ShareOut?) {
+        if (!BuildConfig.DEBUG) return
+        _shareOut.update { if (s == null) it - peerId else it + (peerId to s) }
     }
 
     /** Debug builds only: hides the "no push config" banner while taking design screenshots. */

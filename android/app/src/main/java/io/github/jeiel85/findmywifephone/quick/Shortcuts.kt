@@ -7,6 +7,7 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import io.github.jeiel85.findmywifephone.R
+import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.data.Peer
 
 /**
@@ -45,20 +46,26 @@ object Shortcuts {
     /**
      * Keeps the launcher in step with the pairs: one ring and one locate shortcut per peer, renamed
      * when a peer renames, and pinned ones of an unpaired peer greyed out instead of left working.
+     * A launcher that refuses (rate limit, a launcher without shortcut support) is remembered so
+     * settings can say so; the next app start tries again.
      */
     fun sync(context: Context, peers: List<Peer>) {
-        runCatching {
+        val ok = runCatching {
             val all = peers.flatMap { listOf(ring(context, it), locate(context, it)) }
             val max = ShortcutManagerCompat.getMaxShortcutCountPerActivity(context).coerceAtLeast(2)
-            ShortcutManagerCompat.setDynamicShortcuts(context, all.take(max))
+            // Rate-limited calls return false instead of throwing: both results count.
+            val set = ShortcutManagerCompat.setDynamicShortcuts(context, all.take(max))
             // Pinned shortcuts outlive the dynamic list: keep their labels current, disable the orphans.
             val current = all.map { it.id }.toSet()
             val pinned = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED).map { it.id }
             val orphans = pinned.filter { it !in current }
             if (orphans.isNotEmpty()) ShortcutManagerCompat.disableShortcuts(context, orphans, "연결이 끊긴 폰이에요")
             val live = all.filter { it.id in pinned }
-            if (live.isNotEmpty()) ShortcutManagerCompat.updateShortcuts(context, live)
-        }.onFailure { Log.w(TAG, "shortcut sync failed", it) }
+            val updated = live.isEmpty() || ShortcutManagerCompat.updateShortcuts(context, live)
+            set && updated
+        }.onFailure { Log.w(TAG, "shortcut sync failed", it) }.getOrDefault(false)
+        if (!ok) Log.w(TAG, "launcher refused the shortcut update (rate limit?)")
+        Hub.store.shortcutSyncFailed = !ok
     }
 
     fun canPin(context: Context) = ShortcutManagerCompat.isRequestPinShortcutSupported(context)

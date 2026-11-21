@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.graphics.drawable.Icon
 import android.os.Build
+import android.service.quicksettings.TileService
 import android.util.Log
 import io.github.jeiel85.findmywifephone.R
 
@@ -22,5 +23,14 @@ object QuickTile {
                 context.mainExecutor,
             ) { result -> Log.i("QuickTile", "add tile result $result") }
         }.onFailure { Log.w("QuickTile", "add tile request failed", it) }
+    }
+
+    /**
+     * Pairs changed: asks the system to bind the tile now, so its name ("○○ 폰 울리기") is right the
+     * next time the shade opens instead of one opening later. Harmless when the tile was never added.
+     */
+    fun refresh(context: Context) {
+        runCatching { TileService.requestListeningState(context, ComponentName(context, RingTileService::class.java)) }
+            .onFailure { Log.w("QuickTile", "tile refresh failed", it) }
     }
 }

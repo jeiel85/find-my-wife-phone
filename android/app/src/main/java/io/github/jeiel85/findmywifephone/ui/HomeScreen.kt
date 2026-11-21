@@ -50,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -77,8 +78,10 @@ import io.github.jeiel85.findmywifephone.core.RingState
 import io.github.jeiel85.findmywifephone.core.ShareNote
 import io.github.jeiel85.findmywifephone.core.ShareOut
 import io.github.jeiel85.findmywifephone.data.Peer
+import io.github.jeiel85.findmywifephone.data.SHARED_CARD_MS
 import io.github.jeiel85.findmywifephone.locate.NoFix
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -261,7 +264,8 @@ private fun PeerPanel(peer: Peer, out: Outgoing?) {
         NearbyCard(peer)
     }
     val asked = out?.result?.takeIf { out.kind == RequestKind.LOCATE }
-    val sent = sharedAll[peer.id]
+    // Days later "잘 도착했어요" says nothing any more; 기록 still has it.
+    val sent = sharedAll[peer.id]?.takeIf { now - it.receivedAt < SHARED_CARD_MS }
     // The newer of "what I asked for" and "what they sent on their own" is the one worth showing.
     when {
         asked != null && (sent == null || asked.fixAt >= sent.fixAt) ->
@@ -299,6 +303,12 @@ private fun ShareOutCard(peer: Peer, s: ShareOut) {
         } to P.c.danger
         is ShareOut.Failed -> "보내지 못했어요 · ${errorText(s.code)}" to P.c.danger
     }
+    // Same words again, without closing the card and going through the sheet; a missing permission needs settings instead.
+    val retry = when (s) {
+        is ShareOut.NoLocation -> s.note.takeIf { s.reason != NoFix.PERMISSION }
+        is ShareOut.Failed -> s.note
+        else -> null
+    }
     Row(
         Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(18.dp)).background(P.c.surface)
             .border(1.dp, P.c.hairline, RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -306,7 +316,9 @@ private fun ShareOutCard(peer: Peer, s: ShareOut) {
     ) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = color, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f))
+        if (retry != null) SmallButton("다시 보내기") { Hub.shareLocation(peer.id, retry) }
         if (!s.busy) {
+            Spacer(Modifier.width(6.dp))
             Icon(Icons.Rounded.Close, "닫기", tint = P.c.inkSoft,
                 modifier = Modifier.size(28.dp).clip(CircleShape).clickable { Hub.dismissShareOut(peer.id) }.padding(4.dp))
         }
@@ -413,7 +425,13 @@ private fun LocationCard(key: String, lat: Double, lng: Double, accuracyM: Float
             }
             Spacer(Modifier.height(4.dp))
             Text(address ?: String.format(Locale.US, "%.5f, %.5f", lat, lng), style = MaterialTheme.typography.bodyMedium, color = P.c.ink)
-            Text("${clockTime(fixAt)} 기준 · 오차 약 ${accuracyM.toInt()}m", fontSize = 13.sp, color = P.c.inkSoft)
+            // A low-battery last location can be an hour old: how old it is matters as much as where.
+            val now by produceState(System.currentTimeMillis(), fixAt) {
+                while (true) { delay(60_000); value = System.currentTimeMillis() }
+            }
+            val old = now - fixAt > STALE_FIX_MS
+            Text(fixAge(fixAt, now), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (old) P.c.amber else P.c.sage)
+            Text("${clockTime(fixAt, now)} 기준 · 오차 약 ${accuracyM.toInt()}m", fontSize = 13.sp, color = P.c.inkSoft)
             Spacer(Modifier.height(14.dp))
             PillButton("지도 앱에서 길찾기", Icons.Rounded.Directions, P.c.sofa, Color.White, Modifier.fillMaxWidth()) {
                 val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng(${Uri.encode(name)})")
@@ -423,6 +441,13 @@ private fun LocationCard(key: String, lat: Double, lng: Double, accuracyM: Float
         }
     }
 }
+
+/** A location older than this is shown as old (amber) on its card. */
+private const val STALE_FIX_MS = 15 * 60_000L
+
+/** "방금 잡은 위치" / "12분 전 위치" / "3시간 전 위치" / "11월 20일 위치". */
+internal fun fixAge(fixAt: Long, now: Long): String =
+    if (now - fixAt < 60_000) "방금 잡은 위치" else "${relativeTime(fixAt, now)} 위치"
 
 @Composable
 private fun statusColor(o: Outgoing): Color = when {

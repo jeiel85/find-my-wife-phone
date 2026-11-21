@@ -54,6 +54,9 @@ data class Settings(
 )
 
 /** The latest location a peer sent on their own ("내 위치 보내기"), kept until a newer one or unpairing. */
+/** A location a peer sent on their own leaves the home screen after this long (it stays in 기록). */
+const val SHARED_CARD_MS = 24 * 60 * 60_000L
+
 data class SharedLocation(
     val lat: Double,
     val lng: Double,
@@ -244,7 +247,7 @@ class Store(context: Context) {
             val e = o.getJSONObject(k)
             SharedLocation(e.getDouble("lat"), e.getDouble("lng"), e.optDouble("acc", 0.0).toFloat(),
                 e.getLong("fixAt"), ShareNote.of(e.optString("note")), e.getLong("at"))
-        }
+        }.filterValues { System.currentTimeMillis() - it.receivedAt < SHARED_CARD_MS }
     }.getOrDefault(emptyMap())
 
     private fun saveShared(map: Map<String, SharedLocation>) {
@@ -277,6 +280,56 @@ class Store(context: Context) {
     var batteryCriticalSent: Boolean
         get() = prefs.getBoolean("batteryCriticalSent", false)
         set(v) = prefs.edit().putBoolean("batteryCriticalSent", v).apply()
+
+    /**
+     * BatteryWatch: peers that already got this discharge's notice at [stage] ("low" / "critical").
+     * A retry after a partial failure goes only to the others, not again to those who have it.
+     */
+    fun batteryNotified(stage: String): Set<String> = prefs.getStringSet("batteryTo.$stage", null)?.toSet() ?: emptySet()
+
+    fun setBatteryNotified(stage: String, peerIds: Set<String>) = prefs.edit().putStringSet("batteryTo.$stage", peerIds).apply()
+
+    /** Names this discharge, so retries of the same notice update one history line instead of adding one each. */
+    fun batteryRound(): String = prefs.getString("batteryRound", null)
+        ?: java.util.UUID.randomUUID().toString().take(8).also { prefs.edit().putString("batteryRound", it).apply() }
+
+    /** A notice was attempted this discharge (even if nobody got it yet): charging must start a new round. */
+    val batteryRoundStarted: Boolean get() = prefs.contains("batteryRound")
+
+    /** The phone charged (or passed the re-arm level): every notice is due again, to everyone. */
+    fun rearmBattery() = prefs.edit().putBoolean("batteryLowSent", false).putBoolean("batteryCriticalSent", false)
+        .remove("batteryTo.low").remove("batteryTo.critical").remove("batteryRound").apply()
+
+    /** BatteryWatch's last check, for measuring how late Doze makes the 15-minute checks. */
+    data class BatteryCheck(val bootCount: Int, val elapsed: Long, val battery: Int, val charging: Boolean)
+
+    var lastBatteryCheck: BatteryCheck?
+        get() = prefs.getString("batteryCheck", null)?.let { s ->
+            runCatching {
+                val o = JSONObject(s)
+                BatteryCheck(o.getInt("boot"), o.getLong("el"), o.getInt("pct"), o.getBoolean("chg"))
+            }.getOrNull()
+        }
+        set(v) = prefs.edit().apply {
+            if (v == null) remove("batteryCheck")
+            else putString("batteryCheck", JSONObject().put("boot", v.bootCount).put("el", v.elapsed)
+                .put("pct", v.battery).put("chg", v.charging).toString())
+        }.apply()
+
+    /** Longest gap between two checks in the same boot (ms) and when it was seen; 0 when none. */
+    var batteryLongestGap: Pair<Long, Long>
+        get() = prefs.getLong("batteryGap", 0) to prefs.getLong("batteryGapAt", 0)
+        set(v) = prefs.edit().putLong("batteryGap", v.first).putLong("batteryGapAt", v.second).apply()
+
+    /** When the phone last died (or restarted) low without its ≤ 5% notice having gone out; 0 = never. */
+    var batteryMissedCriticalAt: Long
+        get() = prefs.getLong("batteryMissedAt", 0)
+        set(v) = prefs.edit().putLong("batteryMissedAt", v).apply()
+
+    /** The launcher refused the last shortcut update (Shortcuts.sync); settings says so. */
+    var shortcutSyncFailed: Boolean
+        get() = prefs.getBoolean("shortcutSyncFailed", false)
+        set(v) = prefs.edit().putBoolean("shortcutSyncFailed", v).apply()
 
     // ---- pairing invites (we showed a QR; we must remember its secret) --------------------
 

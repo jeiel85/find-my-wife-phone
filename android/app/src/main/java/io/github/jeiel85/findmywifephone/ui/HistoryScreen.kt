@@ -145,7 +145,7 @@ private fun outcomeText(e: HistoryEntry): String = when {
         "declined" -> "거절"
         "snoozed" -> "요청 받지 않기 중"
         "stopped" -> "중간에 멈춤"
-        "timeout" -> "2분 울리고 멈춤"
+        "timeout" -> "울리는 시간이 다 돼서 멈춤" // the length set then (1, 2 or 5 min) is not recorded
         "busy" -> "다른 요청 처리 중"
         "off" -> "위치 공유 꺼짐"
         "unavailable" -> "위치를 가져올 수 없음"

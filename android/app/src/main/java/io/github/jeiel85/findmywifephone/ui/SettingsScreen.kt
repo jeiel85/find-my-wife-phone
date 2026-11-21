@@ -74,6 +74,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jeiel85.findmywifephone.BuildConfig
 import io.github.jeiel85.findmywifephone.core.BATTERY_CRITICAL_PCT
 import io.github.jeiel85.findmywifephone.core.BATTERY_LOW_PCT
+import io.github.jeiel85.findmywifephone.core.BatteryWatch
 import io.github.jeiel85.findmywifephone.core.Clock
 import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.LocationPolicy
@@ -111,6 +112,7 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
     val scope = rememberCoroutineScope()
     val registration by Hub.registration.collectAsStateWithLifecycle()
     val now = System.currentTimeMillis()
+    val tick = rememberResumeTick() // permissions, location switch and checks change while we are away
     fun open(url: String) = context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
@@ -145,6 +147,7 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
                 }
             }
         }
+        if (settings.batteryWarn) BatteryNotes(settings, tick)
 
         if (peers.isNotEmpty()) {
             Group("바로 울리기") {
@@ -158,6 +161,9 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
                     ListRow("빠른 설정에 타일 추가", "화면 위에서 쓸어내려 어느 앱에서든 울려요",
                         Icons.Rounded.Widgets, P.c.indigo, onClick = { QuickTile.request(context) }) { Chevron() }
                 }
+            }
+            if (remember(tick, peers) { Hub.store.shortcutSyncFailed }) {
+                Note("홈 화면 런처가 바로가기 변경을 받아 주지 않았어요. 길게 눌러 보이는 이름이 옛것이면 앱을 다시 열어 주세요.")
             }
             Note("앱 아이콘을 길게 눌러도 울리기와 위치 보기가 바로 나와요." +
                 if (QuickTile.canRequest()) "" else " 빠른 설정의 연필 버튼을 눌러 \u2018폰 울리기\u2019 타일을 끌어다 놓을 수도 있어요.")
@@ -345,6 +351,43 @@ private fun ClockRow(offsetMs: Long, onClick: () -> Unit) {
     ListRow("이 폰 시계가 $off", "옛 버전 앱과 주고받는 찾기 요청이 늦게 온 것으로 무시될 수 있어요. 눌러서 날짜와 시간을 자동으로 맞추세요",
         Icons.Rounded.Schedule, P.c.danger, onClick = onClick) { Chevron() }
 }
+
+/**
+ * Under "가족에게 알리기": why the last location would not go along right now, and whether this
+ * phone's checks have been running late (Doze) — both silent otherwise until the day it matters.
+ */
+@Composable
+private fun BatteryNotes(settings: io.github.jeiel85.findmywifephone.data.Settings, tick: Int) {
+    val now = System.currentTimeMillis()
+    val block = remember(tick, settings) { Hub.lastLocationBlock() }
+    val reason = when (block) {
+        Hub.LastLocationBlock.SNOOZED -> "요청 받지 않기 중이라"
+        Hub.LastLocationBlock.PERMISSION -> "위치 권한이 ‘항상 허용’이 아니라"
+        Hub.LastLocationBlock.LOCATION_OFF -> "폰의 위치(GPS)가 꺼져 있어서"
+        else -> null // OFF and POLICY: the switch and its subtitle already say so
+    }
+    if (reason != null) WarnNote("지금은 마지막 위치를 보낼 수 없어요 · $reason 배터리 숫자만 알려요")
+
+    val (gap, gapAt) = remember(tick) { Hub.store.batteryLongestGap }
+    val missedAt = remember(tick) { Hub.store.batteryMissedCriticalAt }
+    val late = gap >= BatteryWatch.LATE_GAP_MS && now - gapAt < BatteryWatch.DIAGNOSTIC_KEEP_MS
+    val missed = missedAt > 0 && now - missedAt < BatteryWatch.DIAGNOSTIC_KEEP_MS
+    if (late || missed) {
+        val exempt = remember(tick) {
+            Hub.context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(Hub.context.packageName)
+        }
+        val what = if (missed) "지난번에는 $BATTERY_CRITICAL_PCT% 알림을 보내기 전에 폰이 꺼졌어요"
+            else "절전 때문에 배터리 확인이 최대 ${gapText(gap)} 늦어졌어요"
+        WarnNote(if (exempt) "$what. 앱 정보 → 배터리에서 ‘제한 없음’인지, 삼성 폰이면 ‘절전 예외 앱’에 포너디가 있는지 봐 주세요"
+            else "$what. 아래 권한 점검에서 ‘배터리 최적화 제외’를 허용하면 더 자주 확인해요")
+    }
+}
+
+private fun gapText(ms: Long): String = if (ms >= 2 * 3_600_000) "${ms / 3_600_000}시간" else "${ms / 60_000}분"
+
+@Composable
+private fun WarnNote(text: String) =
+    Text(text, fontSize = 13.sp, color = P.c.amber, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp, top = 8.dp))
 
 @Composable
 private fun Note(text: String) =
