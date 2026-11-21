@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import io.github.jeiel85.findmywifephone.core.BatteryWatch
 import io.github.jeiel85.findmywifephone.core.Hub
+import io.github.jeiel85.findmywifephone.quick.QuickTile
 import io.github.jeiel85.findmywifephone.quick.Shortcuts
 import io.github.jeiel85.findmywifephone.ring.SoundState
 import io.github.jeiel85.findmywifephone.ui.Notifier
@@ -25,11 +26,14 @@ class App : Application() {
         Hub.scope.launch {
             BatteryWatch.check(this@App) // a phone already low at start is not left waiting 15 minutes
         }
-        // Launcher shortcuts follow the pairs (names, unpairing). Peers also change on every status
+        // Launcher shortcuts and the Quick Settings tile follow the pairs (names, unpairing). Peers also change on every status
         // update; Android rate-limits shortcut calls from the background, so only id/name changes count.
         Hub.scope.launch {
             Hub.store.peers.distinctUntilChangedBy { list -> list.map { it.id to it.name } }
-                .collect { Shortcuts.sync(this@App, it) }
+                .collect {
+                    Shortcuts.sync(this@App, it)
+                    QuickTile.refresh(this@App)
+                }
         }
     }
 }

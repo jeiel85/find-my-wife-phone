@@ -8,9 +8,12 @@ import io.github.jeiel85.findmywifephone.core.Fix
 import io.github.jeiel85.findmywifephone.core.Msg
 import io.github.jeiel85.findmywifephone.core.PeerStatus
 import io.github.jeiel85.findmywifephone.core.ShareNote
+import io.github.jeiel85.findmywifephone.data.Store
+import io.github.jeiel85.findmywifephone.ui.fixAge
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** "내 위치 보내기" and "배터리가 부족하면 알리기" (v0.4.0), with the last location (v0.5.0). */
@@ -80,5 +83,49 @@ class SharingTest {
         assertEquals(Action.NONE, decide(battery = 50))
         // Turned off after a notice: re-arming still happens so turning it on again works.
         assertEquals(Action.REARM, decide(enabled = false, battery = 90, low = true))
+    }
+
+    @Test fun partialNoticeIsClearedByCharging() {
+        // One peer got the 15% notice, the other did not yet: charging must forget both, or the next
+        // discharge would skip the peer that already had it.
+        assertEquals(Action.REARM, decide(battery = 12, charging = true, partial = true))
+        assertEquals(Action.REARM, BatteryWatch.decide(true, BatteryWatch.REARM_PCT, false, false, false, partial = true))
+        // Still discharging: the stage is not done, so the retry goes on.
+        assertEquals(Action.NOTIFY_LOW, BatteryWatch.decide(true, 12, false, false, false, partial = true))
+    }
+
+    private fun decide(battery: Int, charging: Boolean, partial: Boolean) =
+        BatteryWatch.decide(true, battery, charging, false, false, partial)
+
+    @Test fun noticeIsDoneOnlyWhenEveryPeerHasIt() {
+        assertFalse(BatteryWatch.complete(listOf("a", "b"), setOf("a")))
+        assertTrue(BatteryWatch.complete(listOf("a", "b"), setOf("a", "b")))
+        // Unpaired since: the one left counts. Nobody paired: nothing was told.
+        assertTrue(BatteryWatch.complete(listOf("b"), setOf("a", "b")))
+        assertFalse(BatteryWatch.complete(emptyList(), setOf("a")))
+    }
+
+    @Test fun checkGapOnlyWithinOneBoot() {
+        val prev = Store.BatteryCheck(bootCount = 7, elapsed = 1_000_000, battery = 40, charging = false)
+        assertEquals(900_000L, BatteryWatch.gap(prev, 7, 1_900_000))
+        assertNull(BatteryWatch.gap(prev, 8, 5_000_000)) // rebooted: elapsedRealtime started over
+        assertNull(BatteryWatch.gap(prev, -1, 5_000_000)) // boot count unknown
+        assertNull(BatteryWatch.gap(null, 7, 5_000))
+    }
+
+    @Test fun missedCriticalNoticeIsSeenAfterTheRestart() {
+        val low = Store.BatteryCheck(bootCount = 7, elapsed = 1, battery = 9, charging = false)
+        assertTrue(BatteryWatch.missedCritical(low, 8, criticalSent = false))
+        assertFalse(BatteryWatch.missedCritical(low, 8, criticalSent = true))
+        assertFalse(BatteryWatch.missedCritical(low, 7, criticalSent = false)) // same boot: still running
+        assertFalse(BatteryWatch.missedCritical(low.copy(charging = true), 8, criticalSent = false))
+        assertFalse(BatteryWatch.missedCritical(low.copy(battery = 60), 8, criticalSent = false))
+    }
+
+    @Test fun fixAgeSaysHowOld() {
+        val now = 1_700_000_000_000
+        assertEquals("방금 잡은 위치", fixAge(now - 30_000, now))
+        assertEquals("12분 전 위치", fixAge(now - 12 * 60_000, now))
+        assertEquals("3시간 전 위치", fixAge(now - 3 * 3_600_000, now))
     }
 }
