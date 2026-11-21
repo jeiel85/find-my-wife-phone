@@ -47,8 +47,8 @@ object BatteryWatch {
     /**
      * Pure decision, unit-tested: what to do at [battery]% given which notices already went out.
      * A phone first seen below the critical level gets only the critical notice (it counts for both).
-     * [partial]: some peers already have a notice that has not reached all of them yet; charging must
-     * clear that too, or the next discharge would skip those peers.
+     * [partial]: a notice was attempted this discharge but has not reached every peer (maybe none yet);
+     * charging must clear that too, or the next discharge would skip those peers or reuse its history lines.
      */
     fun decide(enabled: Boolean, battery: Int, charging: Boolean, lowSent: Boolean, criticalSent: Boolean, partial: Boolean = false): Action = when {
         battery < 0 -> Action.NONE
@@ -93,7 +93,9 @@ object BatteryWatch {
         val (battery, charging) = read(context)
         val store = Hub.store
         observe(context, store, battery, charging)
-        val partial = store.batteryNotified(LOW).isNotEmpty() || store.batteryNotified(CRITICAL).isNotEmpty()
+        // Some peers told, or only failed attempts so far: either way this discharge's round must end on charging,
+        // or the next discharge would reuse its history lines and skip its peers.
+        val partial = store.batteryRoundStarted || store.batteryNotified(LOW).isNotEmpty() || store.batteryNotified(CRITICAL).isNotEmpty()
         when (val a = decide(store.settings.value.batteryWarn, battery, charging, store.batteryLowSent, store.batteryCriticalSent, partial)) {
             Action.REARM -> store.rearmBattery()
             Action.NONE -> Unit

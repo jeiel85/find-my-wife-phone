@@ -578,6 +578,12 @@ object Hub {
         _outgoing.update { if (o == null) it - peerId else it + (peerId to o) }
     }
 
+    /** Debug builds only (DemoActivity): shows a "내 위치 보내기" result card. */
+    fun debugShowShareOut(peerId: String, s: ShareOut?) {
+        if (!BuildConfig.DEBUG) return
+        _shareOut.update { if (s == null) it - peerId else it + (peerId to s) }
+    }
+
     /** Debug builds only: hides the "no push config" banner while taking design screenshots. */
     fun debugHideRegistrationBanner() {
         if (BuildConfig.DEBUG) _registration.value = Registration.Ready

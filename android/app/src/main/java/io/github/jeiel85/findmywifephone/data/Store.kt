@@ -293,6 +293,9 @@ class Store(context: Context) {
     fun batteryRound(): String = prefs.getString("batteryRound", null)
         ?: java.util.UUID.randomUUID().toString().take(8).also { prefs.edit().putString("batteryRound", it).apply() }
 
+    /** A notice was attempted this discharge (even if nobody got it yet): charging must start a new round. */
+    val batteryRoundStarted: Boolean get() = prefs.contains("batteryRound")
+
     /** The phone charged (or passed the re-arm level): every notice is due again, to everyone. */
     fun rearmBattery() = prefs.edit().putBoolean("batteryLowSent", false).putBoolean("batteryCriticalSent", false)
         .remove("batteryTo.low").remove("batteryTo.critical").remove("batteryRound").apply()

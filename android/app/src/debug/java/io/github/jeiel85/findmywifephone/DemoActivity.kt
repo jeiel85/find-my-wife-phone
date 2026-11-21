@@ -14,11 +14,14 @@ import io.github.jeiel85.findmywifephone.core.Outgoing
 import io.github.jeiel85.findmywifephone.core.PeerStatus
 import io.github.jeiel85.findmywifephone.core.RequestKind
 import io.github.jeiel85.findmywifephone.core.RingState
+import io.github.jeiel85.findmywifephone.core.ShareNote
+import io.github.jeiel85.findmywifephone.core.ShareOut
 import io.github.jeiel85.findmywifephone.crypto.Crypto
 import io.github.jeiel85.findmywifephone.data.Direction
 import io.github.jeiel85.findmywifephone.data.HistoryEntry
 import io.github.jeiel85.findmywifephone.data.Kind
 import io.github.jeiel85.findmywifephone.data.Peer
+import io.github.jeiel85.findmywifephone.data.SharedLocation
 import io.github.jeiel85.findmywifephone.locate.LocateService
 import io.github.jeiel85.findmywifephone.locate.LocateUi
 import io.github.jeiel85.findmywifephone.ring.RingService
@@ -61,6 +64,21 @@ class DemoActivity : Activity() {
             "located" -> Hub.debugShowOutgoing(PEER, Outgoing(RequestKind.LOCATE, "demo-l", now, sent = true, locate = LocateState.LOCATING,
                 result = Msg.LocateResult("demo-l", 37.5512, 126.9882, 35f, now - 40_000, null)))
             "history" -> seedHistory(now)
+            // v0.5.1: an old low-battery last location (amber age) and a failed "내 위치 보내기" with its retry.
+            "shared-old" -> {
+                Hub.store.putShared(PEER, SharedLocation(37.5512, 126.9882, 30f, now - 40 * 60_000, ShareNote.BATTERY, now - 5 * 60_000))
+                Hub.debugShowShareOut(PEER, ShareOut.Failed("network", ShareNote.ARRIVED))
+            }
+            // v0.5.1: settings notes — Doze-late checks and a missed 5% notice.
+            "battery-notes" -> {
+                Hub.store.updateSettings { it.copy(batteryWarn = true, batteryLocation = true) }
+                Hub.store.batteryLongestGap = 3 * 3_600_000L to now - 3_600_000L
+                Hub.store.batteryMissedCriticalAt = now - 86_400_000L
+            }
+        }
+        if (state != "shared-old") {
+            Hub.store.dismissShared(PEER)
+            Hub.debugShowShareOut(PEER, null)
         }
         val alert = when (state) {
             "alert-countdown" -> { RingService.debugPreview(RingUi("demo", "남편", ringing = false, secondsLeft = 7)); true }
@@ -71,7 +89,10 @@ class DemoActivity : Activity() {
         }
         val target = if (alert) AlertActivity::class.java else MainActivity::class.java
         startActivity(Intent(this, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .apply { if (state == "history") putExtra(MainActivity.EXTRA_SCREEN, MainActivity.SCREEN_HISTORY) })
+            .apply {
+                if (state == "history") putExtra(MainActivity.EXTRA_SCREEN, MainActivity.SCREEN_HISTORY)
+                if (state == "battery-notes") putExtra(MainActivity.EXTRA_SCREEN, MainActivity.SCREEN_SETTINGS)
+            })
         finish()
     }
 
