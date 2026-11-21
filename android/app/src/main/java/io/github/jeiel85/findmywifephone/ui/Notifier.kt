@@ -142,9 +142,16 @@ object Notifier {
     fun locationReceived(context: Context, peerId: String, name: String, note: ShareNote) =
         info(context, ID_INFO_BASE + 9, "${name}님: ${note.label}", "${name}님이 위치를 보냈어요. 탭해서 지도로 보세요.", peer = peerId)
 
-    fun peerBatteryLow(context: Context, peerId: String, name: String, battery: Int) = info(
+    fun peerBatteryLow(context: Context, peerId: String, name: String, battery: Int, withLocation: Boolean) = info(
         context, ID_INFO_BASE + 10, "${name}님 폰 배터리가 ${if (battery >= 0) "$battery%" else "거의 안"} 남았어요",
-        "폰이 꺼지면 울리거나 위치를 확인할 수 없어요. 충전하라고 알려 주거나, 필요하면 지금 위치를 확인해 두세요.", peer = peerId)
+        if (withLocation) "꺼지기 전 마지막 위치를 받았어요. 탭해서 지도로 보세요."
+        else "폰이 꺼지면 울리거나 위치를 확인할 수 없어요. 충전하라고 알려 주거나, 필요하면 지금 위치를 확인해 두세요.", peer = peerId)
+
+    /** This phone sent its location with a low-battery notice; like every location it sends, the owner is told. */
+    fun batteryLocationSent(context: Context, names: List<String>) = info(
+        context, ID_INFO_BASE + 11, "배터리가 부족해 내 위치를 보냈어요",
+        "${names.joinToString(", ") { "${it}님" }}에게 꺼지기 전 마지막 위치를 보냈어요. 설정 → 가족에게 알리기에서 끌 수 있어요.",
+        MainActivity.SCREEN_HISTORY)
 
     /** The system installer needs one tap; [confirm] is its own screen. */
     fun updateReady(context: Context, version: String, confirm: Intent) = update(context, ID_INFO_BASE + 5,

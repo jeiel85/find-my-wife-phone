@@ -30,3 +30,6 @@ android/.kotlin/
 
 # Build output
 dist/
+
+# JVM crash logs (e.g. Gradle out of memory)
+hs_err_pid*.log

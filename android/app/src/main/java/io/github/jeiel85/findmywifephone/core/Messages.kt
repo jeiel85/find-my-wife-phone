@@ -105,15 +105,24 @@ enum class LocateState(val wire: String) {
 enum class ShareNote(val wire: String, val label: String) {
     HERE("here", "지금 여기 있어요"),
     ARRIVED("arrived", "잘 도착했어요"),
-    LEAVING("leaving", "지금 출발해요");
+    LEAVING("leaving", "지금 출발해요"),
+    /** Not picked by people: the location a low-battery notice carried (kept on the receiver only). */
+    BATTERY("battery", "꺼지기 전 마지막 위치");
 
     companion object {
+        /** What the owner can pick in "내 위치 보내기". */
+        val pickable = listOf(HERE, ARRIVED, LEAVING)
         fun of(wire: String?) = entries.firstOrNull { it.wire == wire } ?: HERE
     }
 }
 
 /** A phone tells its peers once when its battery drops to this level or below without charging. */
 const val BATTERY_LOW_PCT = 15
+/** ...and once more here, with its last location if the owner allows it (v0.5.0). */
+const val BATTERY_CRITICAL_PCT = 5
+
+/** One location fix carried inside another message. */
+data class Fix(val lat: Double, val lng: Double, val accuracyM: Float, val fixAt: Long)
 
 /** Every end-to-end message. `id`/`ts` guard against replays; see design/PROTOCOL.md. */
 sealed class Msg {
@@ -140,8 +149,12 @@ sealed class Msg {
     /** The sender shares where they are without being asked ("내 위치 보내기"); [note] is a preset line. */
     data class LocationShare(val lat: Double, val lng: Double, val accuracyM: Float, val fixAt: Long, val note: ShareNote,
                              override val status: PeerStatus?, override val id: String = newId(), override val ts: Long = now()) : Msg()
-    /** The sender's battery just ran low (≤ [BATTERY_LOW_PCT] and not charging); [status] carries the level. */
-    data class BatteryLow(override val status: PeerStatus, override val id: String = newId(), override val ts: Long = now()) : Msg()
+    /**
+     * The sender's battery just ran low (≤ [BATTERY_LOW_PCT], again at ≤ [BATTERY_CRITICAL_PCT]; not charging);
+     * [status] carries the level. [fix]: where the phone was, when its owner lets it say so (v0.5.0; older apps ignore it).
+     */
+    data class BatteryLow(override val status: PeerStatus, val fix: Fix? = null,
+                          override val id: String = newId(), override val ts: Long = now()) : Msg()
 
     fun toJson(): JSONObject {
         val o = JSONObject().put("v", 1).put("id", id).put("ts", ts)
@@ -159,7 +172,9 @@ sealed class Msg {
             is Unpair -> o.put("type", "unpair")
             is LocationShare -> o.put("type", "location-share").put("lat", lat).put("lng", lng)
                 .put("acc", accuracyM.toDouble()).put("fixAt", fixAt).put("note", note.wire)
-            is BatteryLow -> o.put("type", "battery-low")
+            is BatteryLow -> o.put("type", "battery-low").apply {
+                fix?.let { put("lat", it.lat).put("lng", it.lng).put("acc", it.accuracyM.toDouble()).put("fixAt", it.fixAt) }
+            }
         }
         return o
     }
@@ -199,7 +214,14 @@ sealed class Msg {
                         LocationShare(lat, lng, o.optDouble("acc", 0.0).toFloat(), o.getLong("fixAt"),
                             ShareNote.of(o.optString("note")), st, id, ts)
                     }
-                    "battery-low" -> st?.let { BatteryLow(it, id, ts) }
+                    "battery-low" -> st?.let {
+                        val fix = if (o.has("lat") && o.has("lng")) {
+                            val lat = o.getDouble("lat"); val lng = o.getDouble("lng")
+                            require(lat in -90.0..90.0 && lng in -180.0..180.0)
+                            Fix(lat, lng, o.optDouble("acc", 0.0).toFloat(), o.getLong("fixAt"))
+                        } else null
+                        BatteryLow(it, fix, id, ts)
+                    }
                     else -> null
                 }
             }

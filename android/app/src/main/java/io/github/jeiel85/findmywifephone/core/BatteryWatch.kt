@@ -14,9 +14,11 @@ import java.util.concurrent.TimeUnit
 
 /**
  * "배터리가 부족하면 알리기": a dying phone can no longer be rung or located, so its peers hear about
- * it once while there is still time. Android delivers no low-battery broadcast to a closed app, so
- * this checks every 15 minutes (WorkManager's shortest period; no network unless it has to tell).
- * One notice per discharge: it is due again only after the phone charged past [REARM_PCT].
+ * it while there is still time — at [BATTERY_LOW_PCT] and once more at [BATTERY_CRITICAL_PCT], each
+ * with the phone's last location when the owner allows it (Hub.lastLocationAllowed, D-13).
+ * Android delivers no low-battery broadcast to a closed app, so this checks every 15 minutes
+ * (WorkManager's shortest period; no network unless it has to tell). Each notice goes out once per
+ * discharge: both are due again only after the phone charges or passes [REARM_PCT].
  */
 object BatteryWatch {
     private const val WORK = "battery-watch"
@@ -30,14 +32,18 @@ object BatteryWatch {
         )
     }
 
-    enum class Action { NOTIFY, REARM, NONE }
+    enum class Action { NOTIFY_LOW, NOTIFY_CRITICAL, REARM, NONE }
 
-    /** Pure decision, unit-tested: what to do at [battery]% given whether the notice already went out. */
-    fun decide(enabled: Boolean, battery: Int, charging: Boolean, sent: Boolean): Action = when {
+    /**
+     * Pure decision, unit-tested: what to do at [battery]% given which notices already went out.
+     * A phone first seen below the critical level gets only the critical notice (it counts for both).
+     */
+    fun decide(enabled: Boolean, battery: Int, charging: Boolean, lowSent: Boolean, criticalSent: Boolean): Action = when {
         battery < 0 -> Action.NONE
-        sent && (charging || battery >= REARM_PCT) -> Action.REARM
-        !enabled || sent || charging -> Action.NONE
-        battery <= BATTERY_LOW_PCT -> Action.NOTIFY
+        (lowSent || criticalSent) && (charging || battery >= REARM_PCT) -> Action.REARM
+        !enabled || charging -> Action.NONE
+        battery <= BATTERY_CRITICAL_PCT && !criticalSent -> Action.NOTIFY_CRITICAL
+        battery <= BATTERY_LOW_PCT && !lowSent && !criticalSent -> Action.NOTIFY_LOW
         else -> Action.NONE
     }
 
@@ -55,18 +61,21 @@ object BatteryWatch {
     }
 
     /** Runs one check; also called when the app starts, so a phone already low is not missed. */
-    fun check(context: Context) {
+    suspend fun check(context: Context) {
         Hub.init(context)
         val (battery, charging) = read(context)
         val store = Hub.store
-        when (decide(store.settings.value.batteryWarn, battery, charging, store.batteryLowSent)) {
-            Action.REARM -> store.batteryLowSent = false
+        when (val a = decide(store.settings.value.batteryWarn, battery, charging, store.batteryLowSent, store.batteryCriticalSent)) {
+            Action.REARM -> { store.batteryLowSent = false; store.batteryCriticalSent = false }
             Action.NONE -> Unit
-            Action.NOTIFY -> {
-                // Marked first only on success: a failed send (offline) is retried on the next check.
+            Action.NOTIFY_LOW, Action.NOTIFY_CRITICAL -> {
+                // Marked only on success: a failed send (offline) is retried on the next check.
                 val ok = Hub.sendBatteryLow()
-                if (ok) store.batteryLowSent = true
-                Log.i("BatteryWatch", "low battery $battery%: notice ${if (ok) "sent" else "not sent, retry later"}")
+                if (ok) {
+                    store.batteryLowSent = true
+                    if (a == Action.NOTIFY_CRITICAL) store.batteryCriticalSent = true
+                }
+                Log.i("BatteryWatch", "battery $battery% ($a): notice ${if (ok) "sent" else "not sent, retry later"}")
             }
         }
     }

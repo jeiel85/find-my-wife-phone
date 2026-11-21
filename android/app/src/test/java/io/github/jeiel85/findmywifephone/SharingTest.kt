@@ -1,16 +1,19 @@
 package io.github.jeiel85.findmywifephone
 
+import io.github.jeiel85.findmywifephone.core.BATTERY_CRITICAL_PCT
 import io.github.jeiel85.findmywifephone.core.BATTERY_LOW_PCT
 import io.github.jeiel85.findmywifephone.core.BatteryWatch
 import io.github.jeiel85.findmywifephone.core.BatteryWatch.Action
+import io.github.jeiel85.findmywifephone.core.Fix
 import io.github.jeiel85.findmywifephone.core.Msg
 import io.github.jeiel85.findmywifephone.core.PeerStatus
 import io.github.jeiel85.findmywifephone.core.ShareNote
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** "내 위치 보내기" and "배터리가 부족하면 알리기" (v0.4.0). */
+/** "내 위치 보내기" and "배터리가 부족하면 알리기" (v0.4.0), with the last location (v0.5.0). */
 class SharingTest {
 
     @Test fun locationShareRoundTrip() {
@@ -21,6 +24,10 @@ class SharingTest {
     @Test fun unknownShareNoteReadsAsHere() {
         val o = Msg.LocationShare(1.0, 2.0, 5f, 1L, ShareNote.LEAVING, null).toJson().put("note", "from-the-future")
         assertEquals(ShareNote.HERE, (Msg.parse(o.toString()) as Msg.LocationShare).note)
+    }
+
+    @Test fun batteryNoteIsNotPickable() {
+        assertFalse(ShareNote.BATTERY in ShareNote.pickable)
     }
 
     @Test fun locationShareOutOfRangeIsDropped() {
@@ -36,24 +43,42 @@ class SharingTest {
         assertNull(Msg.parse(bare.toString()))
     }
 
-    @Test fun batteryNoticeGoesOutOncePerDischarge() {
-        // Low and not yet told: notify.
-        assertEquals(Action.NOTIFY, BatteryWatch.decide(true, BATTERY_LOW_PCT, charging = false, sent = false))
-        // Already told: quiet, even lower.
-        assertEquals(Action.NONE, BatteryWatch.decide(true, 5, charging = false, sent = true))
-        // Just above the threshold after telling: still quiet (no re-arm until well charged).
-        assertEquals(Action.NONE, BatteryWatch.decide(true, BATTERY_LOW_PCT + 3, charging = false, sent = true))
-        // Charging or charged past the re-arm level: due again next time.
-        assertEquals(Action.REARM, BatteryWatch.decide(true, 10, charging = true, sent = true))
-        assertEquals(Action.REARM, BatteryWatch.decide(true, BatteryWatch.REARM_PCT, charging = false, sent = true))
+    @Test fun batteryLowCarriesTheLastLocation() {
+        val m = Msg.BatteryLow(PeerStatus(battery = 4), Fix(37.5, 127.0, 20f, 1_700_000_000_000))
+        assertEquals(m, Msg.parse(m.toJson().toString()))
+        // Out-of-range coordinates spoil the whole message rather than putting a pin in the wrong place.
+        assertNull(Msg.parse(m.toJson().put("lat", -91.0).toString()))
+        // A 0.4.0 notice (no coordinates) still reads, without a location.
+        assertNull((Msg.parse(Msg.BatteryLow(PeerStatus(battery = 4)).toJson().toString()) as Msg.BatteryLow).fix)
     }
 
-    @Test fun batteryNoticeRespectsSwitchAndUnknowns() {
-        assertEquals(Action.NONE, BatteryWatch.decide(false, 5, charging = false, sent = false))
-        assertEquals(Action.NONE, BatteryWatch.decide(true, 5, charging = true, sent = false))
-        assertEquals(Action.NONE, BatteryWatch.decide(true, -1, charging = false, sent = false))
-        assertEquals(Action.NONE, BatteryWatch.decide(true, 50, charging = false, sent = false))
+    private fun decide(enabled: Boolean = true, battery: Int, charging: Boolean = false, low: Boolean = false, critical: Boolean = false) =
+        BatteryWatch.decide(enabled, battery, charging, low, critical)
+
+    @Test fun twoNoticesPerDischarge() {
+        assertEquals(Action.NOTIFY_LOW, decide(battery = BATTERY_LOW_PCT))
+        // Told at 15%: quiet until the critical level, then once more.
+        assertEquals(Action.NONE, decide(battery = 10, low = true))
+        assertEquals(Action.NOTIFY_CRITICAL, decide(battery = BATTERY_CRITICAL_PCT, low = true))
+        assertEquals(Action.NONE, decide(battery = 2, low = true, critical = true))
+        // First seen already below the critical level: only the critical notice.
+        assertEquals(Action.NOTIFY_CRITICAL, decide(battery = 3))
+        assertEquals(Action.NONE, decide(battery = 10, critical = true))
+    }
+
+    @Test fun noticesRearmOnChargeOrRecovery() {
+        assertEquals(Action.NONE, decide(battery = BATTERY_LOW_PCT + 3, low = true))
+        assertEquals(Action.REARM, decide(battery = 10, charging = true, low = true))
+        assertEquals(Action.REARM, decide(battery = 3, charging = true, critical = true))
+        assertEquals(Action.REARM, decide(battery = BatteryWatch.REARM_PCT, low = true, critical = true))
+    }
+
+    @Test fun noticesRespectSwitchAndUnknowns() {
+        assertEquals(Action.NONE, decide(enabled = false, battery = 5))
+        assertEquals(Action.NONE, decide(battery = 5, charging = true))
+        assertEquals(Action.NONE, decide(battery = -1))
+        assertEquals(Action.NONE, decide(battery = 50))
         // Turned off after a notice: re-arming still happens so turning it on again works.
-        assertEquals(Action.REARM, BatteryWatch.decide(false, 90, charging = false, sent = true))
+        assertEquals(Action.REARM, decide(enabled = false, battery = 90, low = true))
     }
 }

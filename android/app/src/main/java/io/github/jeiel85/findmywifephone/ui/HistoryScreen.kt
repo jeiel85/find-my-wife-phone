@@ -127,6 +127,8 @@ private fun headline(e: HistoryEntry): String = when (e.kind) {
 }
 
 private fun outcomeText(e: HistoryEntry): String = when {
+    e.outcome == "shared" && e.kind == Kind.BATTERY ->
+        if (e.direction == Direction.IN) "마지막 위치를 받았어요 (눌러서 보기)" else "마지막 위치를 함께 보냈어요 (눌러서 보기)"
     e.outcome == "shared" && e.kind == Kind.SHARE ->
         if (e.direction == Direction.IN) "위치를 받았어요 (눌러서 보기)" else "보냈어요 (눌러서 보기)"
     e.outcome == "shared" -> if (e.direction == Direction.IN) "위치를 보냈어요 (눌러서 보기)" else "위치를 받았어요 (눌러서 보기)"
