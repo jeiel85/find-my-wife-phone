@@ -49,6 +49,8 @@ data class Settings(
     val updateNotice: Boolean = true,
     /** Tell the peers once when this phone's battery runs low (BatteryWatch). */
     val batteryWarn: Boolean = true,
+    /** ...with this phone's last location, while [locationPolicy] is AUTO and not snoozed (v0.5.0). */
+    val batteryLocation: Boolean = true,
 )
 
 /** The latest location a peer sent on their own ("내 위치 보내기"), kept until a newer one or unpairing. */
@@ -161,6 +163,7 @@ class Store(context: Context) {
         // auto-install choice must not carry over as a Play notice choice.
         updateNotice = prefs.getBoolean("updateNotice", BuildConfig.FLAVOR != "play" || prefs.getBoolean("autoUpdate", true)),
         batteryWarn = prefs.getBoolean("batteryWarn", true),
+        batteryLocation = prefs.getBoolean("batteryLocation", true),
     )
 
     @Synchronized
@@ -178,6 +181,7 @@ class Store(context: Context) {
             .putBoolean("autoUpdate", next.autoUpdate)
             .putBoolean("updateNotice", next.updateNotice)
             .putBoolean("batteryWarn", next.batteryWarn)
+            .putBoolean("batteryLocation", next.batteryLocation)
             .apply()
         _settings.value = next
         return next
@@ -268,6 +272,11 @@ class Store(context: Context) {
     var batteryLowSent: Boolean
         get() = prefs.getBoolean("batteryLowSent", false)
         set(v) = prefs.edit().putBoolean("batteryLowSent", v).apply()
+
+    /** BatteryWatch: the second (≤ 5%) notice went out this discharge. */
+    var batteryCriticalSent: Boolean
+        get() = prefs.getBoolean("batteryCriticalSent", false)
+        set(v) = prefs.edit().putBoolean("batteryCriticalSent", v).apply()
 
     // ---- pairing invites (we showed a QR; we must remember its secret) --------------------
 

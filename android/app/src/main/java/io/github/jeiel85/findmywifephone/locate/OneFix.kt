@@ -16,7 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** Why [OneFix.take] returned no location. */
 enum class NoFix { PERMISSION, LOCATION_OFF, NO_FIX }
 
-/** One location fix for the owner's own "내 위치 보내기" (app in the foreground). */
+/** One location fix: the owner's own "내 위치 보내기" (foreground) or a low-battery last location (background). */
 object OneFix {
     private const val TIMEOUT_MS = 25_000L
     /** No new fix in time: fall back to the last known one if it is at most this old (its time is shown). */
@@ -25,8 +25,13 @@ object OneFix {
     fun hasPermission(context: Context) = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
         .any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
 
+    /** "항상 허용": needed when no screen of ours is open (the low-battery last location). */
+    fun hasBackgroundPermission(context: Context) = hasPermission(context) &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    /** One fix; when none comes in time, the last known one if at most [maxAgeMs] old. */
     @SuppressLint("MissingPermission")
-    suspend fun take(context: Context): Result<Location> {
+    suspend fun take(context: Context, maxAgeMs: Long = LAST_KNOWN_MAX_AGE_MS): Result<Location> {
         if (!hasPermission(context)) return Result.failure(NoFixException(NoFix.PERMISSION))
         if (context.getSystemService(LocationManager::class.java)?.isLocationEnabled != true) {
             return Result.failure(NoFixException(NoFix.LOCATION_OFF))
@@ -38,7 +43,7 @@ object OneFix {
         }
         cts.cancel()
         val loc = fresh ?: runCatching { client.lastLocation.await() }.getOrNull()
-            ?.takeIf { System.currentTimeMillis() - it.time < LAST_KNOWN_MAX_AGE_MS }
+            ?.takeIf { System.currentTimeMillis() - it.time < maxAgeMs }
         return loc?.let { Result.success(it) } ?: Result.failure(NoFixException(NoFix.NO_FIX))
     }
 }

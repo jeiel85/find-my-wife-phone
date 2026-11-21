@@ -323,7 +323,7 @@ private fun ShareSheet(name: String, onDismiss: () -> Unit, onPick: (ShareNote) 
             Text("지금 위치를 한 번 잡아 ${name}님에게 한마디와 함께 보내요. ${name}님 폰 화면과 기록에 남아요.",
                 style = MaterialTheme.typography.bodyMedium, color = P.c.inkSoft)
             Spacer(Modifier.height(12.dp))
-            ShareNote.entries.forEach { note -> ListRow(note.label, onClick = { onPick(note) }) }
+            ShareNote.pickable.forEach { note -> ListRow(note.label, onClick = { onPick(note) }) }
         }
     }
 }

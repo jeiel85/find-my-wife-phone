@@ -106,6 +106,8 @@ sealed class PairEvent {
 object Hub {
     private const val TAG = "Hub"
     const val NO_RESPONSE_MS = 30_000L
+    /** A dying phone may have no fresh fix to give; an hour-old one still says where it was (its time is shown). */
+    private const val LAST_FIX_MAX_AGE_MS = 60 * 60_000L
     const val INVITE_TTL_SEC = 600
     /** Older ring/locate requests are ignored: ringing minutes later would only confuse. */
     private const val MAX_REQUEST_AGE_MS = 120_000L
@@ -420,18 +422,38 @@ object Hub {
      * BatteryWatch: this phone's battery just ran low. Tells every peer once, so they can still ring or
      * locate it before it dies. Returns whether every peer that can be reached got it.
      */
-    fun sendBatteryLow(): Boolean {
-        val peers = store.peers.value
-        if (peers.isEmpty() || store.identity() == null) return false
+    suspend fun sendBatteryLow(): Boolean {
+        if (store.peers.value.isEmpty() || store.identity() == null) return false
+        // The last location goes along only on the owner's terms (D-13): the switch, the "auto" policy, not snoozed.
+        val taken = if (lastLocationAllowed()) {
+            OneFix.take(context, maxAgeMs = LAST_FIX_MAX_AGE_MS).getOrNull()
+                ?.let { Fix(it.latitude, it.longitude, it.accuracy, it.time) }
+        } else null
+        // Taking a fix can take 25 s: the owner may have withdrawn consent (or unpaired) meanwhile, so read both again.
         val st = myStatus()
+        val fix = taken?.takeIf { lastLocationAllowed(st) }
+        val peers = store.peers.value
+        if (peers.isEmpty()) return false
         val now = System.currentTimeMillis()
-        return peers.map { p ->
-            val msg = Msg.BatteryLow(st)
+        val results = peers.map { p ->
+            val msg = Msg.BatteryLow(st, fix)
             val r = send(p, msg, ttlSec = 3600)
             history.add(HistoryEntry(msg.id, now, p.id, p.name, Direction.OUT, Kind.BATTERY,
-                if (r is RelayResult.Ok) "sent" else "failed:${(r as RelayResult.Fail).code}"))
-            settled(r)
-        }.all { it }
+                if (r is RelayResult.Ok) (if (fix != null) "shared" else "sent") else "failed:${(r as RelayResult.Fail).code}",
+                fix?.lat, fix?.lng))
+            p to r
+        }
+        // Like every location this phone sends, the owner is told who got it.
+        val told = results.filter { it.second is RelayResult.Ok }.map { it.first.name }
+        if (fix != null && told.isNotEmpty()) Notifier.batteryLocationSent(context, told)
+        return results.all { settled(it.second) }
+    }
+
+    /** May a low-battery notice carry this phone's location (settings, policy, snooze, background permission)? */
+    fun lastLocationAllowed(st: PeerStatus = myStatus()): Boolean {
+        val s = store.settings.value
+        return s.batteryWarn && s.batteryLocation && st.locationPolicy == LocationPolicy.AUTO &&
+            !st.snoozed(System.currentTimeMillis()) && OneFix.hasBackgroundPermission(context)
     }
 
     /**
@@ -629,8 +651,11 @@ object Hub {
                 Notifier.locationReceived(context, peer.id, peer.name, msg.note)
             }
             is Msg.BatteryLow -> {
-                history.add(HistoryEntry(msg.id, now, peer.id, peer.name, Direction.IN, Kind.BATTERY, "received"))
-                Notifier.peerBatteryLow(context, peer.id, peer.name, msg.status.battery)
+                val fix = msg.fix
+                if (fix != null) store.putShared(peer.id, SharedLocation(fix.lat, fix.lng, fix.accuracyM, fix.fixAt, ShareNote.BATTERY, now))
+                history.add(HistoryEntry(msg.id, now, peer.id, peer.name, Direction.IN, Kind.BATTERY,
+                    if (fix != null) "shared" else "received", fix?.lat, fix?.lng))
+                Notifier.peerBatteryLow(context, peer.id, peer.name, msg.status.battery, withLocation = fix != null)
             }
             is Msg.Unpair -> {
                 store.removePeer(peer.id)

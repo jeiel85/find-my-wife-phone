@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jeiel85.findmywifephone.BuildConfig
+import io.github.jeiel85.findmywifephone.core.BATTERY_CRITICAL_PCT
 import io.github.jeiel85.findmywifephone.core.BATTERY_LOW_PCT
 import io.github.jeiel85.findmywifephone.core.Clock
 import io.github.jeiel85.findmywifephone.core.Hub
@@ -133,6 +134,15 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
             ToggleRow("배터리가 부족하면 알리기", "$BATTERY_LOW_PCT% 아래로 떨어지면 한 번 알려요. 꺼지기 전에 울리거나 위치를 확인할 수 있게요",
                 Icons.Rounded.BatteryAlert, P.c.danger, settings.batteryWarn) { on ->
                 Hub.store.updateSettings { it.copy(batteryWarn = on) }
+            }
+            if (settings.batteryWarn) {
+                ToggleRow("마지막 위치도 함께 보내기",
+                    if (settings.locationPolicy == LocationPolicy.AUTO)
+                        "$BATTERY_LOW_PCT%와 $BATTERY_CRITICAL_PCT%에서 지금 위치를 한 번씩 함께 보내요. 보낼 때마다 알림이 떠요"
+                    else "위치 응답 방법이 \u2018알리고 10초 뒤 보내기\u2019일 때만 보내요. 지금은 배터리 숫자만 알려요",
+                    Icons.Rounded.LocationOn, P.c.indigo, settings.batteryLocation) { on ->
+                    Hub.store.updateSettings { it.copy(batteryLocation = on) }
+                }
             }
         }
 
