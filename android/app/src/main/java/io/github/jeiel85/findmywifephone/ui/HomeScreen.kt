@@ -36,14 +36,16 @@ import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Directions
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.QrCodeScanner
-import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,19 +74,27 @@ import io.github.jeiel85.findmywifephone.core.Outgoing
 import io.github.jeiel85.findmywifephone.core.Registration
 import io.github.jeiel85.findmywifephone.core.RequestKind
 import io.github.jeiel85.findmywifephone.core.RingState
+import io.github.jeiel85.findmywifephone.core.ShareNote
+import io.github.jeiel85.findmywifephone.core.ShareOut
 import io.github.jeiel85.findmywifephone.data.Peer
+import io.github.jeiel85.findmywifephone.locate.NoFix
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
 @Composable
-fun HomeScreen(onPair: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(onPair: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit,
+               focusPeer: String? = null, onFocusConsumed: () -> Unit = {}) {
     val peers by Hub.store.peers.collectAsStateWithLifecycle()
     val settings by Hub.store.settings.collectAsStateWithLifecycle()
     val outgoing by Hub.outgoing.collectAsStateWithLifecycle()
     val registration by Hub.registration.collectAsStateWithLifecycle()
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var snoozeSheet by remember { mutableStateOf(false) }
+    // Opened from a shortcut or the Quick Settings tile: show the peer it acted on.
+    LaunchedEffect(focusPeer) {
+        if (focusPeer != null) { selected = focusPeer; onFocusConsumed() }
+    }
     val peer = peers.firstOrNull { it.id == selected } ?: peers.firstOrNull()
     val now = System.currentTimeMillis()
 
@@ -106,7 +116,7 @@ fun HomeScreen(onPair: () -> Unit, onHistory: () -> Unit, onSettings: () -> Unit
                     peers.forEach { p -> Chip(p.name, if (p.id == peer.id) P.c.coral else P.c.inkSoft) { selected = p.id } }
                 }
             }
-            PeerPanel(peer, outgoing[peer.id], onHistory)
+            PeerPanel(peer, outgoing[peer.id])
         }
         Spacer(Modifier.height(36.dp))
     }
@@ -185,8 +195,11 @@ private fun PeerAvatar(name: String, online: Boolean) {
 }
 
 @Composable
-private fun PeerPanel(peer: Peer, out: Outgoing?, onHistory: () -> Unit) {
+private fun PeerPanel(peer: Peer, out: Outgoing?) {
     val now = System.currentTimeMillis()
+    val sharedAll by Hub.store.shared.collectAsStateWithLifecycle()
+    val shareOutAll by Hub.shareOut.collectAsStateWithLifecycle()
+    var shareSheet by remember { mutableStateOf(false) }
     val st = peer.status
     val snoozed = st?.snoozed(now) == true
     val recent = peer.seenAt > 0 && now - peer.seenAt < 15 * 60_000
@@ -247,13 +260,71 @@ private fun PeerPanel(peer: Peer, out: Outgoing?, onHistory: () -> Unit) {
     AnimatedVisibility(ringing, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
         NearbyCard(peer)
     }
-    out?.result?.takeIf { out.kind == RequestKind.LOCATE }?.let { LocationCard(peer.name, it) }
+    val asked = out?.result?.takeIf { out.kind == RequestKind.LOCATE }
+    val sent = sharedAll[peer.id]
+    // The newer of "what I asked for" and "what they sent on their own" is the one worth showing.
+    when {
+        asked != null && (sent == null || asked.fixAt >= sent.fixAt) ->
+            LocationCard(asked.reqId, asked.lat, asked.lng, asked.accuracyM, asked.fixAt, "${peer.name}님은 여기 있어요", peer.name)
+        sent != null -> LocationCard("shared:${sent.receivedAt}", sent.lat, sent.lng, sent.accuracyM, sent.fixAt,
+            "${peer.name}님: ${sent.note.label}", peer.name, onClose = { Hub.store.dismissShared(peer.id) })
+    }
 
     Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val locateActive = out?.kind == RequestKind.LOCATE && out.active
         Tile("위치 보기", if (locateActive) "확인하는 중…" else "한 번만 요청해요", Icons.Rounded.LocationOn, P.c.sofa,
             Modifier.weight(1f), enabled = !locateActive) { Hub.locate(peer.id) }
-        Tile("기록", "누가 언제 찾았는지", Icons.Rounded.ReceiptLong, P.c.amber, Modifier.weight(1f), onClick = onHistory)
+        val sharing = shareOutAll[peer.id]?.busy == true
+        Tile("내 위치 보내기", if (sharing) "보내는 중…" else "도착했어요 · 출발해요", Icons.Rounded.MyLocation, P.c.sage,
+            Modifier.weight(1f), enabled = !sharing) { shareSheet = true }
+    }
+    shareOutAll[peer.id]?.let { ShareOutCard(peer, it) }
+    if (shareSheet) ShareSheet(peer.name, onDismiss = { shareSheet = false }) { note ->
+        shareSheet = false
+        Hub.shareLocation(peer.id, note)
+    }
+}
+
+/** Where "내 위치 보내기" is, under the tiles; closable once it is done. */
+@Composable
+private fun ShareOutCard(peer: Peer, s: ShareOut) {
+    val (text, color) = when (s) {
+        ShareOut.Locating -> "내 위치를 찾는 중…" to P.c.ink
+        ShareOut.Sending -> "보내는 중…" to P.c.ink
+        is ShareOut.Sent -> "${peer.name}님에게 \u2018${s.note.label}\u2019를 위치와 함께 보냈어요" to P.c.sage
+        is ShareOut.NoLocation -> when (s.reason) {
+            NoFix.PERMISSION -> "위치 권한이 없어요. 설정 → 권한 점검에서 허용해 주세요"
+            NoFix.LOCATION_OFF -> "폰의 위치(GPS)가 꺼져 있어요. 켜고 다시 해 주세요"
+            NoFix.NO_FIX -> "지금 위치를 잡지 못했어요. 창가나 밖에서 다시 해 주세요"
+        } to P.c.danger
+        is ShareOut.Failed -> "보내지 못했어요 · ${errorText(s.code)}" to P.c.danger
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(18.dp)).background(P.c.surface)
+            .border(1.dp, P.c.hairline, RoundedCornerShape(18.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = color, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f))
+        if (!s.busy) {
+            Icon(Icons.Rounded.Close, "닫기", tint = P.c.inkSoft,
+                modifier = Modifier.size(28.dp).clip(CircleShape).clickable { Hub.dismissShareOut(peer.id) }.padding(4.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShareSheet(name: String, onDismiss: () -> Unit, onPick: (ShareNote) -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = P.c.surface) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
+            Text("내 위치 보내기", style = MaterialTheme.typography.headlineSmall, color = P.c.ink)
+            Spacer(Modifier.height(6.dp))
+            Text("지금 위치를 한 번 잡아 ${name}님에게 한마디와 함께 보내요. ${name}님 폰 화면과 기록에 남아요.",
+                style = MaterialTheme.typography.bodyMedium, color = P.c.inkSoft)
+            Spacer(Modifier.height(12.dp))
+            ShareNote.entries.forEach { note -> ListRow(note.label, onClick = { onPick(note) }) }
+        }
     }
 }
 
@@ -315,14 +386,15 @@ private fun progress(o: Outgoing): Progress {
 }
 
 @Composable
-private fun LocationCard(name: String, r: Msg.LocateResult) {
+private fun LocationCard(key: String, lat: Double, lng: Double, accuracyM: Float, fixAt: Long, title: String, name: String,
+                         onClose: (() -> Unit)? = null) {
     val context = LocalContext.current
-    var address by remember(r.reqId) { mutableStateOf<String?>(null) }
-    LaunchedEffect(r.reqId) {
+    var address by remember(key) { mutableStateOf<String?>(null) }
+    LaunchedEffect(key) {
         address = withContext(Dispatchers.IO) {
             runCatching {
                 @Suppress("DEPRECATION")
-                Geocoder(context, Locale.KOREA).getFromLocation(r.lat, r.lng, 1)?.firstOrNull()?.getAddressLine(0)
+                Geocoder(context, Locale.KOREA).getFromLocation(lat, lng, 1)?.firstOrNull()?.getAddressLine(0)
             }.getOrNull()
         }
     }
@@ -330,17 +402,23 @@ private fun LocationCard(name: String, r: Msg.LocateResult) {
         Modifier.fillMaxWidth().padding(top = 16.dp).clip(RoundedCornerShape(24.dp)).background(P.c.surface)
             .border(1.dp, P.c.hairline, RoundedCornerShape(24.dp)).padding(10.dp),
     ) {
-        MiniMap(r.lat, r.lng, r.accuracyM, Modifier.fillMaxWidth().height(190.dp))
+        MiniMap(lat, lng, accuracyM, Modifier.fillMaxWidth().height(190.dp))
         Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp)) {
-            Text("${name}님은 여기 있어요", style = MaterialTheme.typography.titleLarge, color = P.c.ink)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleLarge, color = P.c.ink, modifier = Modifier.weight(1f))
+                if (onClose != null) {
+                    Icon(Icons.Rounded.Close, "닫기", tint = P.c.inkSoft,
+                        modifier = Modifier.size(28.dp).clip(CircleShape).clickable(onClick = onClose).padding(4.dp))
+                }
+            }
             Spacer(Modifier.height(4.dp))
-            Text(address ?: String.format(Locale.US, "%.5f, %.5f", r.lat, r.lng), style = MaterialTheme.typography.bodyMedium, color = P.c.ink)
-            Text("${clockTime(r.fixAt)} 기준 · 오차 약 ${r.accuracyM.toInt()}m", fontSize = 13.sp, color = P.c.inkSoft)
+            Text(address ?: String.format(Locale.US, "%.5f, %.5f", lat, lng), style = MaterialTheme.typography.bodyMedium, color = P.c.ink)
+            Text("${clockTime(fixAt)} 기준 · 오차 약 ${accuracyM.toInt()}m", fontSize = 13.sp, color = P.c.inkSoft)
             Spacer(Modifier.height(14.dp))
             PillButton("지도 앱에서 길찾기", Icons.Rounded.Directions, P.c.sofa, Color.White, Modifier.fillMaxWidth()) {
-                val uri = Uri.parse("geo:${r.lat},${r.lng}?q=${r.lat},${r.lng}(${Uri.encode(name)})")
+                val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng(${Uri.encode(name)})")
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-                    .onFailure { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com/?q=${r.lat},${r.lng}"))) }
+                    .onFailure { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com/?q=$lat,$lng"))) }
             }
         }
     }

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import io.github.jeiel85.findmywifephone.BuildConfig
 import io.github.jeiel85.findmywifephone.core.LocationPolicy
 import io.github.jeiel85.findmywifephone.core.PeerStatus
+import io.github.jeiel85.findmywifephone.core.ShareNote
 import io.github.jeiel85.findmywifephone.crypto.Crypto
 import io.github.jeiel85.findmywifephone.crypto.KeystoreCipher
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +47,18 @@ data class Settings(
     val autoUpdate: Boolean = true,
     /** Play build: say when Play has a newer version ("새 버전 알림"). Unused on GitHub. */
     val updateNotice: Boolean = true,
+    /** Tell the peers once when this phone's battery runs low (BatteryWatch). */
+    val batteryWarn: Boolean = true,
+)
+
+/** The latest location a peer sent on their own ("내 위치 보내기"), kept until a newer one or unpairing. */
+data class SharedLocation(
+    val lat: Double,
+    val lng: Double,
+    val accuracyM: Float,
+    val fixAt: Long,
+    val note: ShareNote,
+    val receivedAt: Long,
 )
 
 enum class ThemeMode(val wire: String) {
@@ -66,6 +79,10 @@ class Store(context: Context) {
 
     private val _settings = MutableStateFlow(loadSettings())
     val settings: StateFlow<Settings> = _settings.asStateFlow()
+
+    private val _shared = MutableStateFlow(loadShared())
+    /** Per peer id: the last location that peer sent on their own. */
+    val shared: StateFlow<Map<String, SharedLocation>> = _shared.asStateFlow()
 
     // ---- identity ------------------------------------------------------------------------
 
@@ -143,6 +160,7 @@ class Store(context: Context) {
         // Play 0.3.4–0.3.5 kept this switch under the GitHub build's key; a GitHub install's
         // auto-install choice must not carry over as a Play notice choice.
         updateNotice = prefs.getBoolean("updateNotice", BuildConfig.FLAVOR != "play" || prefs.getBoolean("autoUpdate", true)),
+        batteryWarn = prefs.getBoolean("batteryWarn", true),
     )
 
     @Synchronized
@@ -159,6 +177,7 @@ class Store(context: Context) {
             .putString("theme", next.theme.wire)
             .putBoolean("autoUpdate", next.autoUpdate)
             .putBoolean("updateNotice", next.updateNotice)
+            .putBoolean("batteryWarn", next.batteryWarn)
             .apply()
         _settings.value = next
         return next
@@ -208,7 +227,47 @@ class Store(context: Context) {
     }
 
     @Synchronized
-    fun removePeer(id: String) = savePeers(_peers.value.filterNot { it.id == id })
+    fun removePeer(id: String) {
+        savePeers(_peers.value.filterNot { it.id == id })
+        if (id in _shared.value) saveShared(_shared.value - id)
+    }
+
+    // ---- locations peers sent on their own -----------------------------------------------
+
+    private fun loadShared(): Map<String, SharedLocation> = runCatching {
+        val o = JSONObject(prefs.getString("shared", "{}") ?: "{}")
+        o.keys().asSequence().associateWith { k ->
+            val e = o.getJSONObject(k)
+            SharedLocation(e.getDouble("lat"), e.getDouble("lng"), e.optDouble("acc", 0.0).toFloat(),
+                e.getLong("fixAt"), ShareNote.of(e.optString("note")), e.getLong("at"))
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun saveShared(map: Map<String, SharedLocation>) {
+        val o = JSONObject()
+        map.forEach { (k, v) ->
+            o.put(k, JSONObject().put("lat", v.lat).put("lng", v.lng).put("acc", v.accuracyM.toDouble())
+                .put("fixAt", v.fixAt).put("note", v.note.wire).put("at", v.receivedAt))
+        }
+        prefs.edit().putString("shared", o.toString()).apply()
+        _shared.value = map
+    }
+
+    @Synchronized
+    fun putShared(peerId: String, loc: SharedLocation) {
+        if (_peers.value.none { it.id == peerId }) return
+        saveShared(_shared.value + (peerId to loc))
+    }
+
+    @Synchronized
+    fun dismissShared(peerId: String) {
+        if (peerId in _shared.value) saveShared(_shared.value - peerId)
+    }
+
+    /** BatteryWatch: the low-battery notice went out and is not due again until the phone charges. */
+    var batteryLowSent: Boolean
+        get() = prefs.getBoolean("batteryLowSent", false)
+        set(v) = prefs.edit().putBoolean("batteryLowSent", v).apply()
 
     // ---- pairing invites (we showed a QR; we must remember its secret) --------------------
 

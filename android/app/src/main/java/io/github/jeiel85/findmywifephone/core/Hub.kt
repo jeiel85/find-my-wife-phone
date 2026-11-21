@@ -2,7 +2,6 @@ package io.github.jeiel85.findmywifephone.core
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -15,8 +14,12 @@ import io.github.jeiel85.findmywifephone.data.HistoryEntry
 import io.github.jeiel85.findmywifephone.data.Identity
 import io.github.jeiel85.findmywifephone.data.Kind
 import io.github.jeiel85.findmywifephone.data.Peer
+import io.github.jeiel85.findmywifephone.data.SharedLocation
 import io.github.jeiel85.findmywifephone.data.Store
 import io.github.jeiel85.findmywifephone.locate.LocateService
+import io.github.jeiel85.findmywifephone.locate.NoFix
+import io.github.jeiel85.findmywifephone.locate.NoFixException
+import io.github.jeiel85.findmywifephone.locate.OneFix
 import io.github.jeiel85.findmywifephone.net.Relay
 import io.github.jeiel85.findmywifephone.net.RelayResult
 import io.github.jeiel85.findmywifephone.ring.RingService
@@ -82,6 +85,17 @@ data class Outgoing(
     }
 }
 
+/** "내 위치 보내기" as the sender's screen shows it. */
+sealed class ShareOut {
+    data object Locating : ShareOut()
+    data object Sending : ShareOut()
+    data class Sent(val note: ShareNote, val at: Long) : ShareOut()
+    data class NoLocation(val reason: NoFix) : ShareOut()
+    data class Failed(val code: String) : ShareOut()
+
+    val busy get() = this is Locating || this is Sending
+}
+
 sealed class PairEvent {
     data class Paired(val peerName: String) : PairEvent()
     data class Failed(val code: String) : PairEvent()
@@ -110,6 +124,9 @@ object Hub {
 
     private val _outgoing = MutableStateFlow<Map<String, Outgoing>>(emptyMap())
     val outgoing: StateFlow<Map<String, Outgoing>> = _outgoing.asStateFlow()
+
+    private val _shareOut = MutableStateFlow<Map<String, ShareOut>>(emptyMap())
+    val shareOut: StateFlow<Map<String, ShareOut>> = _shareOut.asStateFlow()
 
     private val _pairEvents = MutableSharedFlow<PairEvent>(extraBufferCapacity = 4)
     val pairEvents: SharedFlow<PairEvent> = _pairEvents.asSharedFlow()
@@ -148,7 +165,7 @@ object Hub {
         val st = myStatus()
         // Retry on the next start only when it might work then; a peer the relay refuses (4xx) won't.
         val done = store.peers.value.map { send(it, Msg.Status(st), ttlSec = 3600) }
-            .all { it is RelayResult.Ok || (it is RelayResult.Fail && it.status in 400..499) }
+            .all { settled(it) }
         if (done) store.announcedVersion = BuildConfig.VERSION_CODE
     }
 
@@ -211,12 +228,12 @@ object Hub {
 
     fun myStatus(): PeerStatus {
         val s = store.settings.value
-        val bm = context.getSystemService(BatteryManager::class.java)
+        val (battery, charging) = BatteryWatch.read(context)
         return PeerStatus(
             snoozeUntil = if (s.snoozeUntil > System.currentTimeMillis()) s.snoozeUntil else 0,
             locationPolicy = s.locationPolicy,
-            battery = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 } ?: -1,
-            charging = bm?.isCharging == true,
+            battery = battery,
+            charging = charging,
             beacon = RingService.beaconState,
             appVersion = BuildConfig.VERSION_CODE,
         )
@@ -304,6 +321,7 @@ object Hub {
         }
         store.removePeer(peerId)
         _outgoing.update { it - peerId }
+        _shareOut.update { it - peerId }
         history.add(HistoryEntry(Msg.newId(), System.currentTimeMillis(), peer.id, peer.name, Direction.OUT, Kind.UNPAIR, "unpaired"))
     }
 
@@ -327,6 +345,7 @@ object Hub {
             history.add(HistoryEntry(Msg.newId(), now, p.id, p.name, Direction.OUT, Kind.UNPAIR, "unpaired"))
         }
         _outgoing.value = emptyMap()
+        _shareOut.value = emptyMap()
         _registration.value = Registration.Removed
         // send() may have cleared the registration on a 401, so read it again.
         store.identity()?.let { finishRelayRemoval(it) } ?: RelayResult.Ok(JSONObject())
@@ -368,8 +387,64 @@ object Hub {
         }
     }
 
+    /**
+     * "내 위치 보내기": one fix, sent to [peerId] with a preset [note]. The owner starts it in the app,
+     * so it needs only foreground location; the receiver keeps it as that peer's latest location.
+     */
+    fun shareLocation(peerId: String, note: ShareNote) {
+        val peer = store.peer(peerId) ?: return
+        if (_shareOut.value[peerId]?.busy == true) return
+        _shareOut.update { it + (peerId to ShareOut.Locating) }
+        scope.launch {
+            val fix = OneFix.take(context)
+            val loc = fix.getOrElse { e ->
+                val reason = (e as? NoFixException)?.reason ?: NoFix.NO_FIX
+                _shareOut.update { it + (peerId to ShareOut.NoLocation(reason)) }
+                return@launch
+            }
+            _shareOut.update { it + (peerId to ShareOut.Sending) }
+            val msg = Msg.LocationShare(loc.latitude, loc.longitude, loc.accuracy, loc.time, note, myStatus())
+            val r = send(peer, msg, ttlSec = 3600)
+            val outcome = if (r is RelayResult.Ok) "shared" else "failed:${(r as RelayResult.Fail).code}"
+            history.add(HistoryEntry(msg.id, System.currentTimeMillis(), peer.id, peer.name, Direction.OUT, Kind.SHARE,
+                outcome, loc.latitude, loc.longitude))
+            _shareOut.update {
+                it + (peerId to if (r is RelayResult.Ok) ShareOut.Sent(note, System.currentTimeMillis()) else ShareOut.Failed((r as RelayResult.Fail).code))
+            }
+        }
+    }
+
+    fun dismissShareOut(peerId: String) = _shareOut.update { it - peerId }
+
+    /**
+     * BatteryWatch: this phone's battery just ran low. Tells every peer once, so they can still ring or
+     * locate it before it dies. Returns whether every peer that can be reached got it.
+     */
+    fun sendBatteryLow(): Boolean {
+        val peers = store.peers.value
+        if (peers.isEmpty() || store.identity() == null) return false
+        val st = myStatus()
+        val now = System.currentTimeMillis()
+        return peers.map { p ->
+            val msg = Msg.BatteryLow(st)
+            val r = send(p, msg, ttlSec = 3600)
+            history.add(HistoryEntry(msg.id, now, p.id, p.name, Direction.OUT, Kind.BATTERY,
+                if (r is RelayResult.Ok) "sent" else "failed:${(r as RelayResult.Fail).code}"))
+            settled(r)
+        }.all { it }
+    }
+
+    /**
+     * A send that need not be retried: delivered, or refused for good (not paired, peer gone…).
+     * 429 is only a rate-limit window (relay /v1/messages) and network/5xx failures may pass, so those retry.
+     */
+    private fun settled(r: RelayResult) = r is RelayResult.Ok || (r is RelayResult.Fail && r.status in 400..499 && r.status != 429)
+
     fun ring(peerId: String) = request(peerId, RequestKind.RING)
     fun locate(peerId: String) = request(peerId, RequestKind.LOCATE)
+
+    /** A ring or locate to [peerId] is still under way (a second tap would only replace it). */
+    fun requestActive(peerId: String, kind: RequestKind) = _outgoing.value[peerId]?.let { it.kind == kind && it.active } == true
 
     private fun request(peerId: String, kind: RequestKind) {
         val peer = store.peer(peerId) ?: return
@@ -548,9 +623,19 @@ object Hub {
                 updateOutgoing(peer.id, msg.reqId) { it.copy(result = msg, noResponse = false) }
                 history.update(msg.reqId, Direction.OUT, "shared", msg.lat, msg.lng)
             }
+            is Msg.LocationShare -> {
+                store.putShared(peer.id, SharedLocation(msg.lat, msg.lng, msg.accuracyM, msg.fixAt, msg.note, now))
+                history.add(HistoryEntry(msg.id, now, peer.id, peer.name, Direction.IN, Kind.SHARE, "shared", msg.lat, msg.lng))
+                Notifier.locationReceived(context, peer.id, peer.name, msg.note)
+            }
+            is Msg.BatteryLow -> {
+                history.add(HistoryEntry(msg.id, now, peer.id, peer.name, Direction.IN, Kind.BATTERY, "received"))
+                Notifier.peerBatteryLow(context, peer.id, peer.name, msg.status.battery)
+            }
             is Msg.Unpair -> {
                 store.removePeer(peer.id)
                 _outgoing.update { it - peer.id }
+                _shareOut.update { it - peer.id }
                 history.add(HistoryEntry(msg.id, now, peer.id, peer.name, Direction.IN, Kind.UNPAIR, "unpaired"))
             }
         }

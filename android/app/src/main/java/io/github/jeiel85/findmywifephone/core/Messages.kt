@@ -101,6 +101,20 @@ enum class LocateState(val wire: String) {
     }
 }
 
+/** Preset line that goes with "내 위치 보내기"; unknown values from newer phones read as [HERE]. */
+enum class ShareNote(val wire: String, val label: String) {
+    HERE("here", "지금 여기 있어요"),
+    ARRIVED("arrived", "잘 도착했어요"),
+    LEAVING("leaving", "지금 출발해요");
+
+    companion object {
+        fun of(wire: String?) = entries.firstOrNull { it.wire == wire } ?: HERE
+    }
+}
+
+/** A phone tells its peers once when its battery drops to this level or below without charging. */
+const val BATTERY_LOW_PCT = 15
+
 /** Every end-to-end message. `id`/`ts` guard against replays; see design/PROTOCOL.md. */
 sealed class Msg {
     abstract val id: String
@@ -123,6 +137,11 @@ sealed class Msg {
     data class LocateResult(val reqId: String, val lat: Double, val lng: Double, val accuracyM: Float, val fixAt: Long,
                             override val status: PeerStatus?, override val id: String = newId(), override val ts: Long = now()) : Msg()
     data class Unpair(override val status: PeerStatus? = null, override val id: String = newId(), override val ts: Long = now()) : Msg()
+    /** The sender shares where they are without being asked ("내 위치 보내기"); [note] is a preset line. */
+    data class LocationShare(val lat: Double, val lng: Double, val accuracyM: Float, val fixAt: Long, val note: ShareNote,
+                             override val status: PeerStatus?, override val id: String = newId(), override val ts: Long = now()) : Msg()
+    /** The sender's battery just ran low (≤ [BATTERY_LOW_PCT] and not charging); [status] carries the level. */
+    data class BatteryLow(override val status: PeerStatus, override val id: String = newId(), override val ts: Long = now()) : Msg()
 
     fun toJson(): JSONObject {
         val o = JSONObject().put("v", 1).put("id", id).put("ts", ts)
@@ -138,6 +157,9 @@ sealed class Msg {
             is LocateResult -> o.put("type", "locate-result").put("reqId", reqId)
                 .put("lat", lat).put("lng", lng).put("acc", accuracyM.toDouble()).put("fixAt", fixAt)
             is Unpair -> o.put("type", "unpair")
+            is LocationShare -> o.put("type", "location-share").put("lat", lat).put("lng", lng)
+                .put("acc", accuracyM.toDouble()).put("fixAt", fixAt).put("note", note.wire)
+            is BatteryLow -> o.put("type", "battery-low")
         }
         return o
     }
@@ -171,6 +193,13 @@ sealed class Msg {
                         LocateResult(req(), lat, lng, o.optDouble("acc", 0.0).toFloat(), o.getLong("fixAt"), st, id, ts)
                     }
                     "unpair" -> Unpair(st, id, ts)
+                    "location-share" -> {
+                        val lat = o.getDouble("lat"); val lng = o.getDouble("lng")
+                        require(lat in -90.0..90.0 && lng in -180.0..180.0)
+                        LocationShare(lat, lng, o.optDouble("acc", 0.0).toFloat(), o.getLong("fixAt"),
+                            ShareNote.of(o.optString("note")), st, id, ts)
+                    }
+                    "battery-low" -> st?.let { BatteryLow(it, id, ts) }
                     else -> null
                 }
             }
