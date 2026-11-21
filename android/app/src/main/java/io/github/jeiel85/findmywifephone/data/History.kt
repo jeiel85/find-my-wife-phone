@@ -8,7 +8,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 enum class Direction { IN, OUT }
-enum class Kind { RING, LOCATE, PAIR, UNPAIR }
+/** SHARE = a location sent without a request, BATTERY = a low-battery notice. Entries are never renamed (stored by name). */
+enum class Kind { RING, LOCATE, PAIR, UNPAIR, SHARE, BATTERY }
 
 /**
  * One line in the "기록" screen. Incoming location requests are always recorded and can't be

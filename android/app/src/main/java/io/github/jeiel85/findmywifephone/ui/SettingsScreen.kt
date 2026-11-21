@@ -23,7 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.DeleteForever
@@ -70,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.jeiel85.findmywifephone.BuildConfig
+import io.github.jeiel85.findmywifephone.core.BATTERY_LOW_PCT
 import io.github.jeiel85.findmywifephone.core.Clock
 import io.github.jeiel85.findmywifephone.core.Hub
 import io.github.jeiel85.findmywifephone.core.LocationPolicy
@@ -79,6 +82,8 @@ import io.github.jeiel85.findmywifephone.data.Peer
 import io.github.jeiel85.findmywifephone.data.RING_LENGTHS
 import io.github.jeiel85.findmywifephone.data.ThemeMode
 import io.github.jeiel85.findmywifephone.net.RelayResult
+import io.github.jeiel85.findmywifephone.quick.QuickTile
+import io.github.jeiel85.findmywifephone.quick.Shortcuts
 import io.github.jeiel85.findmywifephone.ring.RingService
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -123,6 +128,30 @@ fun SettingsScreen(onBack: () -> Unit, onPair: () -> Unit, onHistory: () -> Unit
                 Icons.Rounded.LocationOn, P.c.indigo, onClick = { locationSheet = true }) { Chevron() }
         }
         Note("어떤 방법이든 위치를 보낼 때마다 알림이 뜨고 기록에 남아요.")
+
+        Group("가족에게 알리기") {
+            ToggleRow("배터리가 부족하면 알리기", "$BATTERY_LOW_PCT% 아래로 떨어지면 한 번 알려요. 꺼지기 전에 울리거나 위치를 확인할 수 있게요",
+                Icons.Rounded.BatteryAlert, P.c.danger, settings.batteryWarn) { on ->
+                Hub.store.updateSettings { it.copy(batteryWarn = on) }
+            }
+        }
+
+        if (peers.isNotEmpty()) {
+            Group("바로 울리기") {
+                if (Shortcuts.canPin(context)) {
+                    peers.forEach { p ->
+                        ListRow("홈 화면에 \u2018${p.name} 폰 울리기\u2019 추가", "앱을 열지 않고 아이콘 한 번으로 울려요",
+                            Icons.Rounded.PhoneAndroid, P.c.coral, onClick = { Shortcuts.pinRing(context, p) }) { Chevron() }
+                    }
+                }
+                if (QuickTile.canRequest()) {
+                    ListRow("빠른 설정에 타일 추가", "화면 위에서 쓸어내려 어느 앱에서든 울려요",
+                        Icons.Rounded.Widgets, P.c.indigo, onClick = { QuickTile.request(context) }) { Chevron() }
+                }
+            }
+            Note("앱 아이콘을 길게 눌러도 울리기와 위치 보기가 바로 나와요." +
+                if (QuickTile.canRequest()) "" else " 빠른 설정의 연필 버튼을 눌러 \u2018폰 울리기\u2019 타일을 끌어다 놓을 수도 있어요.")
+        }
 
         Group("울릴 때") {
             ListRow("울리는 시간", "‘찾았어요’를 누르지 않으면 이만큼 울리고 멈춰요", Icons.Rounded.Timer, P.c.coral)

@@ -22,7 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.LinkOff
+import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Icon
@@ -91,6 +93,8 @@ private fun HistoryRow(e: HistoryEntry) {
         Kind.LOCATE -> Icons.Rounded.LocationOn to P.c.indigo
         Kind.PAIR -> Icons.Rounded.Link to P.c.sage
         Kind.UNPAIR -> Icons.Rounded.LinkOff to P.c.inkSoft
+        Kind.SHARE -> Icons.Rounded.MyLocation to P.c.sage
+        Kind.BATTERY -> Icons.Rounded.BatteryAlert to P.c.danger
     }
     Row(
         Modifier.fillMaxWidth()
@@ -118,9 +122,13 @@ private fun headline(e: HistoryEntry): String = when (e.kind) {
     Kind.LOCATE -> if (e.direction == Direction.IN) "${e.peerName}님이 내 위치를 요청했어요" else "${e.peerName}님 위치를 요청했어요"
     Kind.PAIR -> "${e.peerName}님과 연결"
     Kind.UNPAIR -> "${e.peerName}님과 연결 해제"
+    Kind.SHARE -> if (e.direction == Direction.IN) "${e.peerName}님이 위치를 보냈어요" else "${e.peerName}님에게 내 위치를 보냈어요"
+    Kind.BATTERY -> if (e.direction == Direction.IN) "${e.peerName}님 폰 배터리가 부족해요" else "${e.peerName}님에게 배터리 부족을 알렸어요"
 }
 
 private fun outcomeText(e: HistoryEntry): String = when {
+    e.outcome == "shared" && e.kind == Kind.SHARE ->
+        if (e.direction == Direction.IN) "위치를 받았어요 (눌러서 보기)" else "보냈어요 (눌러서 보기)"
     e.outcome == "shared" -> if (e.direction == Direction.IN) "위치를 보냈어요 (눌러서 보기)" else "위치를 받았어요 (눌러서 보기)"
     e.outcome.startsWith("failed:") -> "보내지 못함 · ${errorText(e.outcome.removePrefix("failed:"))}"
     else -> when (e.outcome) {

@@ -9,6 +9,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import io.github.jeiel85.findmywifephone.R
 import io.github.jeiel85.findmywifephone.core.LocateState
+import io.github.jeiel85.findmywifephone.core.ShareNote
 import io.github.jeiel85.findmywifephone.locate.LocateService
 import io.github.jeiel85.findmywifephone.locate.LocateUi
 import io.github.jeiel85.findmywifephone.ring.RingService
@@ -135,6 +136,13 @@ object Notifier {
     fun blockedWhileSnoozed(context: Context, name: String, ring: Boolean) = info(
         context, ID_INFO_BASE + 4, "${name}님이 폰을 찾았어요",
         "요청 받지 않기 중이라 소리를 내지 않았어요.", MainActivity.SCREEN_HISTORY)
+
+    fun locationReceived(context: Context, name: String, note: ShareNote) =
+        info(context, ID_INFO_BASE + 9, "${name}님: ${note.label}", "${name}님이 위치를 보냈어요. 탭해서 지도로 보세요.")
+
+    fun peerBatteryLow(context: Context, name: String, battery: Int) = info(
+        context, ID_INFO_BASE + 10, "${name}님 폰 배터리가 ${if (battery >= 0) "$battery%" else "거의 안"} 남았어요",
+        "폰이 꺼지면 울리거나 위치를 확인할 수 없어요. 충전하라고 알려 주거나, 필요하면 지금 위치를 확인해 두세요.")
 
     /** The system installer needs one tap; [confirm] is its own screen. */
     fun updateReady(context: Context, version: String, confirm: Intent) = update(context, ID_INFO_BASE + 5,

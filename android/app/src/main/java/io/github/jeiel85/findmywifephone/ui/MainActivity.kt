@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
     private var screen by mutableStateOf(SCREEN_HOME)
     private var pendingOffer by mutableStateOf<PairOffer?>(null)
+    private var focusPeer by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
@@ -72,6 +73,7 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         intent ?: return
         intent.getStringExtra(EXTRA_SCREEN)?.let { screen = it }
+        intent.getStringExtra(EXTRA_PEER)?.let { focusPeer = it }
         PairOffer.parse(intent.dataString)?.let {
             pendingOffer = it
             screen = SCREEN_PAIR
@@ -116,6 +118,8 @@ class MainActivity : ComponentActivity() {
                         onPair = { screen = SCREEN_PAIR },
                         onHistory = { screen = SCREEN_HISTORY },
                         onSettings = { screen = SCREEN_SETTINGS },
+                        focusPeer = focusPeer,
+                        onFocusConsumed = { focusPeer = null },
                     )
                 }
             }
@@ -139,6 +143,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SCREEN = "screen"
+        /** Peer to show on the home screen (set by quick.ShortcutActivity; only selects, never acts). */
+        const val EXTRA_PEER = "peer"
         const val SCREEN_HOME = "home"
         const val SCREEN_PAIR = "pair"
         const val SCREEN_HISTORY = "history"
