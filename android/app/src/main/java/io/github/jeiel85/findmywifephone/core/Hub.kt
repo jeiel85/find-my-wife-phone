@@ -423,14 +423,17 @@ object Hub {
      * locate it before it dies. Returns whether every peer that can be reached got it.
      */
     suspend fun sendBatteryLow(): Boolean {
-        val peers = store.peers.value
-        if (peers.isEmpty() || store.identity() == null) return false
-        val st = myStatus()
+        if (store.peers.value.isEmpty() || store.identity() == null) return false
         // The last location goes along only on the owner's terms (D-13): the switch, the "auto" policy, not snoozed.
-        val fix = if (lastLocationAllowed(st)) {
+        val taken = if (lastLocationAllowed()) {
             OneFix.take(context, maxAgeMs = LAST_FIX_MAX_AGE_MS).getOrNull()
                 ?.let { Fix(it.latitude, it.longitude, it.accuracy, it.time) }
         } else null
+        // Taking a fix can take 25 s: the owner may have withdrawn consent (or unpaired) meanwhile, so read both again.
+        val st = myStatus()
+        val fix = taken?.takeIf { lastLocationAllowed(st) }
+        val peers = store.peers.value
+        if (peers.isEmpty()) return false
         val now = System.currentTimeMillis()
         val results = peers.map { p ->
             val msg = Msg.BatteryLow(st, fix)
