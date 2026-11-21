@@ -1,6 +1,8 @@
 package io.github.jeiel85.findmywifephone.core
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import android.util.Log
 import androidx.work.CoroutineWorker
@@ -39,13 +41,25 @@ object BatteryWatch {
         else -> Action.NONE
     }
 
+    /**
+     * Level (0..100, -1 unknown) and whether a charger is plugged in, from the sticky
+     * ACTION_BATTERY_CHANGED broadcast — what the system itself shows and announces. (BatteryManager's
+     * capacity property reads the hardware directly and can disagree, e.g. on emulators.)
+     */
+    fun read(context: Context): Pair<Int, Boolean> {
+        val i = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return -1 to false
+        val level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val pct = if (level >= 0 && scale > 0) (level * 100 / scale).coerceIn(0, 100) else -1
+        return pct to (i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0)
+    }
+
     /** Runs one check; also called when the app starts, so a phone already low is not missed. */
     fun check(context: Context) {
         Hub.init(context)
-        val bm = context.getSystemService(BatteryManager::class.java) ?: return
-        val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 } ?: -1
+        val (battery, charging) = read(context)
         val store = Hub.store
-        when (decide(store.settings.value.batteryWarn, battery, bm.isCharging, store.batteryLowSent)) {
+        when (decide(store.settings.value.batteryWarn, battery, charging, store.batteryLowSent)) {
             Action.REARM -> store.batteryLowSent = false
             Action.NONE -> Unit
             Action.NOTIFY -> {

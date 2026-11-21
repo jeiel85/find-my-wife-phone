@@ -2,7 +2,6 @@ package io.github.jeiel85.findmywifephone.core
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -229,12 +228,12 @@ object Hub {
 
     fun myStatus(): PeerStatus {
         val s = store.settings.value
-        val bm = context.getSystemService(BatteryManager::class.java)
+        val (battery, charging) = BatteryWatch.read(context)
         return PeerStatus(
             snoozeUntil = if (s.snoozeUntil > System.currentTimeMillis()) s.snoozeUntil else 0,
             locationPolicy = s.locationPolicy,
-            battery = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 } ?: -1,
-            charging = bm?.isCharging == true,
+            battery = battery,
+            charging = charging,
             beacon = RingService.beaconState,
             appVersion = BuildConfig.VERSION_CODE,
         )
