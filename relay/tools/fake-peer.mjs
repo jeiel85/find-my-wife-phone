@@ -57,7 +57,8 @@ function open(key, env, from, to) {
   }
 }
 
-const status = () => ({ snoozeUntil: 0, loc: "auto", battery: 81, charging: false });
+// ver: a current app versionCode, so the app does not flag the fake phone as an old version.
+const status = () => ({ snoozeUntil: 0, loc: "auto", battery: 81, charging: false, ver: 99999 });
 const msg = (type, extra = {}) => ({ v: 1, type, id: crypto.randomUUID(), ts: Date.now(), st: status(), ...extra });
 
 async function sendTo(s, obj) {

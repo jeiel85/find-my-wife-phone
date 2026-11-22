@@ -53,7 +53,9 @@ class DemoActivity : Activity() {
             Hub.store.removePeer(PEER)
         } else {
             Hub.store.upsertPeer(Peer(PEER, "아내", "Galaxy S23", Crypto.randomBytes(32), now - 86_400_000L * 3,
-                PeerStatus(snoozeUntil = if (state == "snoozed") now + 3 * 3_600_000L else 0, battery = 64), now - 3 * 60_000))
+                // Same app version as ours, or the home card shows the "old version" warning in every capture.
+                PeerStatus(snoozeUntil = if (state == "snoozed") now + 3 * 3_600_000L else 0, battery = 64,
+                    appVersion = BuildConfig.VERSION_CODE), now - 3 * 60_000))
         }
         fun ring(s: RingState?) = Hub.debugShowOutgoing(PEER, Outgoing(RequestKind.RING, "demo", now, sent = true, ring = s))
         when (state) {
