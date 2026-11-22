@@ -154,6 +154,8 @@ cd android && ./gradlew testGithubDebugUnitTest assembleGithubDebug -Papp.relayU
   - `python store/make_store_assets.py --capture <폴더>` — 스토어 스크린샷 캡처부터 다시 만들기
 - 중계 감시: `.github/workflows/relay-health.yml`이 30분마다 `/v1/health`(D1·FCM 키 확인)를 부르고, 세 번 연속 실패하면
   실행이 실패해 GitHub가 메일로 알립니다. 저장소에 60일 동안 활동이 없으면 GitHub가 예약 실행을 끄니 Actions에서 다시 켜세요.
+  개별 푸시 실패(`fcm send failed`/`threw`)와 오류는 Cloudflare 관찰 가능성 › 모니터(베타)의 이상 감지
+  ‘포너디 중계 푸시 실패·오류’가 1분마다 Workers 로그의 warn·error 수를 보고, 5분에 2건 이상 튀면 메일로 알립니다.
   오류 내역은 Cloudflare 대시보드의 Workers 로그(observability)에서 봅니다.
 - 아이콘: `python design/make_icons.py [--from-codex [이미지]]` — Codex 생성 이미지를 모티프로 가져와 모든 크기를 다시 만듦
 - Play 선언 정합: CI의 `scripts/check-declarations.py`가 권한·포그라운드 서비스·위치 안내 문구 변경을 잡습니다
