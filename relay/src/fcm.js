@@ -102,4 +102,9 @@ async function sendOnce(sa, fcmToken, data, ttlSec, fetchFn, now) {
   return retryable(res.status) ? "retry" : "error";
 }
 
+/** Health check: the service account still gets an OAuth token (cached like a send, so at most one Google call an hour). */
+export async function fcmReady(sa, fetchFn = fetch, now = Date.now()) {
+  await accessToken(sa, fetchFn, now);
+}
+
 export function _resetFcmCacheForTests() { cached = null; }

@@ -152,6 +152,9 @@ cd android && ./gradlew testGithubDebugUnitTest assembleGithubDebug -Papp.relayU
   - `scripts/e2e-requester.py` — 로컬 중계(`wrangler dev --var TEST_OUTBOX:1`)와 가짜 폰(`relay/tools/fake-peer.mjs`)으로
     요청자 쪽 '울리기 → 그만 울리기' 흐름 확인
   - `python store/make_store_assets.py --capture <폴더>` — 스토어 스크린샷 캡처부터 다시 만들기
+- 중계 감시: `.github/workflows/relay-health.yml`이 30분마다 `/v1/health`(D1·FCM 키 확인)를 부르고, 세 번 연속 실패하면
+  실행이 실패해 GitHub가 메일로 알립니다. 저장소에 60일 동안 활동이 없으면 GitHub가 예약 실행을 끄니 Actions에서 다시 켜세요.
+  오류 내역은 Cloudflare 대시보드의 Workers 로그(observability)에서 봅니다.
 - 아이콘: `python design/make_icons.py [--from-codex [이미지]]` — Codex 생성 이미지를 모티프로 가져와 모든 크기를 다시 만듦
 - Play 선언 정합: CI의 `scripts/check-declarations.py`가 권한·포그라운드 서비스·위치 안내 문구 변경을 잡습니다
   (바뀌면 [store/play-declarations.md](store/play-declarations.md)를 Play Console과 대조한 뒤 `--update`).

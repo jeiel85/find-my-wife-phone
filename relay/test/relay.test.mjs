@@ -41,6 +41,7 @@ const deps = {
   sleep: async () => {},
   fetch: async (url, init) => {
     if (url.startsWith("https://oauth2.googleapis.com/")) {
+      if (fcmMode === "noauth") return new Response("{}", { status: 400 });
       return new Response(JSON.stringify({ access_token: "at", expires_in: 3600 }), { status: 200 });
     }
     const msg = JSON.parse(init.body).message;
@@ -95,6 +96,21 @@ async function pair() {
 
 test("health needs no auth", async () => {
   assert.deepEqual((await call("GET", "/v1/health")).body, { ok: true, schema: 1 });
+});
+
+test("health fails when the database does not answer", async () => {
+  env.DB = { prepare: () => ({ first: async () => { throw new Error("D1_ERROR: network lost"); } }) };
+  const r = await call("GET", "/v1/health");
+  assert.equal(r.status, 503);
+  assert.deepEqual(r.body, { ok: false, schema: 1, error: "db" });
+});
+
+test("health fails when the FCM key gets no token or is missing", async () => {
+  fcmMode = "noauth";
+  assert.deepEqual(await call("GET", "/v1/health"), { status: 503, body: { ok: false, schema: 1, error: "fcm" } });
+  fcmMode = "ok";
+  delete env.FCM_SERVICE_ACCOUNT;
+  assert.deepEqual(await call("GET", "/v1/health"), { status: 503, body: { ok: false, schema: 1, error: "fcm" } });
 });
 
 test("unknown token is rejected", async () => {

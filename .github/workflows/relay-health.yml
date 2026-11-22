@@ -1,0 +1,30 @@
+# Watches the live relay every 30 minutes (hardening #2). /v1/health answers 503 when D1 does not
+# answer or the FCM key no longer gets a token — the failures that would make every ring fail. A failed
+# scheduled run makes GitHub email the repository owner, so the outage shows up before the family
+# notices. Three tries a minute apart, so one network blip is not an alert.
+# GitHub turns scheduled workflows off after 60 days without repository activity: re-enable it in Actions.
+name: Relay health
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: GET /v1/health
+        run: |
+          url=https://find-my-wife-phone-relay.jeiel85.workers.dev/v1/health
+          for i in 1 2 3; do
+            out=$(curl -sS --max-time 20 -w ' HTTP %{http_code}' "$url" 2>&1) && [ "${out##* }" = 200 ] \
+              && { echo "ok: $out"; exit 0; }
+            echo "try $i: $out"
+            [ "$i" = 3 ] || sleep 60
+          done
+          echo "::error::relay health check failed: $out"
+          exit 1
