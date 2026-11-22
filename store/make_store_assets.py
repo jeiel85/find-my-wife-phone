@@ -5,8 +5,10 @@
 
 <raw-screenshot-dir> holds 1080x2400 PNG captures named after DemoActivity states
 (idle, nearby, alert-countdown, found, located, history). --capture takes them itself from the
-one adb device (set ANDROID_SERIAL when there are several), which must run a playDebug build —
-use the fmwp-phone-api36 emulator, and tell other sessions that share it first. Per state it runs
+one adb device (set ANDROID_SERIAL when there are several), which must run a playDebug build made
+with the default relay (not the -Papp.relayUrl build of scripts/e2e-requester.py, whose relay is
+gone afterwards and leaves an error banner) — use the fmwp-phone-api36 emulator, and tell other
+sessions that share it first. Per state it runs
 
     adb shell am start -S -n com.jeiel85.ponerdi/io.github.jeiel85.findmywifephone.DemoActivity --es state <state>
 

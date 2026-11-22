@@ -90,6 +90,8 @@ class DemoActivity : Activity() {
         val target = if (alert) AlertActivity::class.java else MainActivity::class.java
         startActivity(Intent(this, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .apply {
+                // Show the demo peer even when real pairings (e.g. an E2E run's fake phone) come first.
+                if (state != "empty") putExtra(MainActivity.EXTRA_PEER, PEER)
                 if (state == "history") putExtra(MainActivity.EXTRA_SCREEN, MainActivity.SCREEN_HISTORY)
                 if (state == "battery-notes") putExtra(MainActivity.EXTRA_SCREEN, MainActivity.SCREEN_SETTINGS)
             })

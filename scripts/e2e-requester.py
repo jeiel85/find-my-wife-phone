@@ -94,6 +94,7 @@ def wait_event(events: "queue.Queue[dict]", pred, what: str, timeout: float = 45
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Korean UI text on a cp949 console
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
     apk = Path(sys.argv[1])
@@ -175,9 +176,12 @@ def main() -> None:
         wait_ui("울림을 멈췄어요")
         print("PASS: requester saw countdown → ringing, stopped it, and the fake phone got ring-cancel")
     finally:
+        for p in reversed(procs):  # stop the fake phone's polling before its registration goes
+            if p is not procs[0]:
+                kill_tree(p)
         subprocess.run([node, "tools/fake-peer.mjs", "cleanup"], cwd=RELAY_DIR, env=peer_env, capture_output=True)
-        for p in procs:
-            kill_tree(p)
+        if procs:
+            kill_tree(procs[0])  # the relay, last: cleanup still talks to it
         if created_vars:
             dev_vars.unlink(missing_ok=True)
 
