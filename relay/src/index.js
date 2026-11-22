@@ -106,9 +106,24 @@ async function authenticate(req, db, now) {
   return dev;
 }
 
+// Local end-to-end tests only (hardening #13). A fake phone cannot receive FCM, so under
+// `wrangler dev --var TEST_OUTBOX:1` a device registered with a "test-outbox:" token gets its pushes
+// here instead and fetches them with GET /v1/test/outbox. Never set TEST_OUTBOX in production: there
+// such a token is just an invalid FCM token, and the outbox route does not exist.
+const TEST_OUTBOX_PREFIX = "test-outbox:";
+const TEST_OUTBOX_MAX = 100;
+const outbox = new Map(); // deviceId → [data]; one wrangler dev isolate holds the whole test run
+const testOutbox = (env) => env.TEST_OUTBOX === "1";
+
 async function wake(env, deps, db, targetId, data, ttlSec) {
   const target = await db.prepare("SELECT fcm_token FROM devices WHERE id = ?1").bind(targetId).first();
   if (!target?.fcm_token) throw new HttpError(410, "peer_unreachable");
+  if (testOutbox(env) && target.fcm_token.startsWith(TEST_OUTBOX_PREFIX)) {
+    const box = outbox.get(targetId) ?? [];
+    box.push(data);
+    outbox.set(targetId, box.slice(-TEST_OUTBOX_MAX));
+    return;
+  }
   const sa = parseServiceAccount(env.FCM_SERVICE_ACCOUNT);
   const result = await sendData(sa, target.fcm_token, data, ttlSec, deps.fetch, deps.now(), deps.sleep);
   if (result === "unregistered") {
@@ -218,6 +233,12 @@ async function route(req, env, deps) {
     await hit(db, `msgdev:${me.id}`, LIMITS.messageDevice, now);
     await wake(env, deps, db, to, { k: "msg", src: me.id, env: envelope }, ttl);
     return json(202, { schema: 1, accepted: true });
+  }
+
+  if (req.method === "GET" && path === "/v1/test/outbox" && testOutbox(env)) {
+    const messages = outbox.get(me.id) ?? [];
+    outbox.delete(me.id);
+    return json(200, { schema: 1, messages });
   }
 
   const unlink = /^\/v1\/links\/([A-Za-z0-9_-]{22})$/.exec(path);

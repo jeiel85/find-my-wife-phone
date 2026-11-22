@@ -147,6 +147,14 @@ cd android && ./gradlew testGithubDebugUnitTest assembleGithubDebug -Papp.relayU
 - 릴리스 전 실기기 체크리스트: [design/VERIFY.md](design/VERIFY.md) → `scripts/release.sh <버전>`
 - 디버그 빌드에는 화면 검수용 `DemoActivity`가 있습니다(릴리스 빌드에는 포함되지 않음):
   `adb shell am start -S -n com.jeiel85.ponerdi/io.github.jeiel85.findmywifephone.DemoActivity --es state ringing`
+- 에뮬레이터 시험 도구(사용법은 각 파일 첫머리):
+  - `scripts/check-self-update.sh` — 릴리스 직후, 이전 GitHub 버전이 새 릴리스로 스스로 업데이트되는지 확인
+  - `scripts/e2e-requester.py` — 로컬 중계(`wrangler dev --var TEST_OUTBOX:1`)와 가짜 폰(`relay/tools/fake-peer.mjs`)으로
+    요청자 쪽 '울리기 → 그만 울리기' 흐름 확인
+  - `python store/make_store_assets.py --capture <폴더>` — 스토어 스크린샷 캡처부터 다시 만들기
+- 아이콘: `python design/make_icons.py [--from-codex [이미지]]` — Codex 생성 이미지를 모티프로 가져와 모든 크기를 다시 만듦
+- Play 선언 정합: CI의 `scripts/check-declarations.py`가 권한·포그라운드 서비스·위치 안내 문구 변경을 잡습니다
+  (바뀌면 [store/play-declarations.md](store/play-declarations.md)를 Play Console과 대조한 뒤 `--update`).
 
 ## 라이선스
 
