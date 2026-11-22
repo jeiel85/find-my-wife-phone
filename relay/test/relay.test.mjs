@@ -321,3 +321,28 @@ async function pair2() {
   assert.equal((await call("POST", `/v1/invites/${inv}/join`, { token: b.token, body: { pub: PUB, env: ENV } })).status, 200);
   return { a, b };
 }
+
+test("test outbox holds a fake phone's pushes only when TEST_OUTBOX is on", async () => {
+  const OUTBOX = "test-outbox:" + "o".repeat(20);
+  // Production (no TEST_OUTBOX): the route does not exist and the token goes to FCM like any other.
+  const off = (await call("POST", "/v1/devices", { body: { fcmToken: OUTBOX } })).body;
+  assert.equal((await call("GET", "/v1/test/outbox", { token: off.token })).status, 404);
+
+  env.TEST_OUTBOX = "1";
+  const fake = (await call("POST", "/v1/devices", { body: { fcmToken: OUTBOX } })).body;
+  const app = await register("app");
+  assert.equal((await call("POST", "/v1/invites", { token: fake.token, body: { inviteId: INVITE } })).status, 201);
+  assert.equal((await call("POST", `/v1/invites/${INVITE}/join`, { token: app.token, body: { pub: PUB, env: ENV } })).status, 200);
+  assert.equal((await call("POST", "/v1/messages", { token: app.token, body: { to: fake.deviceId, env: ENV } })).status, 202);
+  assert.equal(sent.length, 0, "the fake phone's pushes never reach FCM");
+  const box = await call("GET", "/v1/test/outbox", { token: fake.token });
+  assert.deepEqual(box.body.messages, [
+    { k: "pair", src: app.deviceId, pub: PUB, env: ENV },
+    { k: "msg", src: app.deviceId, env: ENV },
+  ]);
+  assert.deepEqual((await call("GET", "/v1/test/outbox", { token: fake.token })).body.messages, [], "fetching empties it");
+  // The real app still gets real FCM pushes.
+  assert.equal((await call("POST", "/v1/messages", { token: fake.token, body: { to: app.deviceId, env: ENV } })).status, 202);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].token, FCM + "app");
+});

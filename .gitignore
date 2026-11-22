@@ -21,6 +21,7 @@ android/play-upload-signing.properties
 relay/node_modules/
 relay/.wrangler/
 relay/.dev.vars
+relay/tools/.fake-peer.json
 
 # Tooling
 design/icon/codex.log
@@ -33,3 +34,6 @@ dist/
 
 # JVM crash logs (e.g. Gradle out of memory)
 hs_err_pid*.log
+
+# Python
+__pycache__/

@@ -1,6 +1,12 @@
 """Builds every icon size from the Codex-generated motif in design/icon/icon-foreground.png.
 
-    python design/make_icons.py
+    python design/make_icons.py                  # rebuild from the motif in the repo
+    python design/make_icons.py --from-codex     # first copy Codex's newest image in as the motif
+    python design/make_icons.py --from-codex <generated.png>
+
+Codex cannot save its image_generation output to a path we choose; it lands under
+~/.codex/generated_images/<session>/<name>.png. --from-codex takes the newest PNG there (or the
+file given) and checks it is a cut-out motif (transparent corners) before replacing the repo copy.
 
 - Android adaptive icon foreground (108dp layer) per density, motif re-centred and scaled so the
   outermost wave stays inside the 66dp safe circle; monochrome layer for themed icons.
@@ -8,12 +14,17 @@
   web icons and the Android adaptive layers can never drift apart.
 - Web: favicon/touch icons and the 1200x630 og:image for the landing page.
 """
+import shutil
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-FG = Image.open(ROOT / "design/icon/icon-foreground.png").convert("RGBA")
+MOTIF = ROOT / "design/icon/icon-foreground.png"
+CODEX_IMAGES = Path.home() / ".codex/generated_images"
 CORAL_START, CORAL_END = (0xFF, 0x6E, 0x5C), (0xE2, 0x4B, 0x3B)  # ic_launcher_bg.xml, angle 315
+FG: Image.Image  # the motif, loaded in main() after an optional --from-codex copy
+SCREEN_MAX: int  # luminance at or below which a pixel belongs to the dark screen (see screen_threshold)
 RES = ROOT / "android/app/src/main/res"
 WEB = ROOT / "docs/assets"
 
@@ -42,16 +53,79 @@ def full_icon(size: int = 1024) -> Image.Image:
     return bg
 
 
+def screen_threshold(img: Image.Image) -> int:
+    """Luminance cut that separates the motif's darkest colour (the phone screen) from the rest.
+
+    Takes the darkest histogram peak among opaque pixels and returns the middle of the empty gap
+    right above it, so a new motif with a slightly different navy still cuts cleanly. Fails loudly
+    when there is no dark cluster or no gap, instead of silently producing a blank themed icon.
+    """
+    hist = [0] * 256
+    alpha = img.getchannel("A").tobytes()
+    for lum, a in zip(img.convert("RGB").convert("L").tobytes(), alpha):
+        if a >= 128:
+            hist[lum] += 1
+    opaque = sum(hist)
+    peak = max(range(128), key=lambda i: hist[i])
+    if hist[peak] < opaque * 0.01:
+        sys.exit(f"monochrome: no dark screen in the motif (darkest peak {peak} has {hist[peak]} of {opaque} px)")
+    floor = max(1, hist[peak] * 0.01)
+    i = peak
+    while i < 255 and hist[i] >= floor:
+        i += 1
+    gap_start = i
+    while i < 255 and hist[i] < floor:
+        i += 1
+    if i - gap_start < 4:
+        sys.exit(f"monochrome: the screen colour (~{peak}) is not separated from the rest; pass --mono-threshold N")
+    return (gap_start + i) // 2
+
+
 def monochrome(img: Image.Image) -> Image.Image:
-    """White silhouette for themed icons; the dark navy screen is cut out so the eyes stay visible."""
-    lum = img.convert("RGB").convert("L").point(lambda v: 255 if v > 52 else 0)
+    """White silhouette for themed icons; the dark navy screen is cut out so the eyes stay visible.
+
+    SCREEN_MAX comes from the full-resolution motif (screen_threshold), so every density uses one
+    cut instead of re-deriving it from a downscaled copy with blurrier edges.
+    """
+    lum = img.convert("RGB").convert("L").point(lambda v: 255 if v > SCREEN_MAX else 0)
     alpha = Image.composite(img.getchannel("A"), Image.new("L", img.size, 0), lum)
     white = Image.new("RGBA", img.size, (255, 255, 255, 0))
     white.putalpha(alpha)
     return white
 
 
+def import_codex_motif(src: Path | None) -> None:
+    """Copies a Codex-generated motif over design/icon/icon-foreground.png after checking it is cut out."""
+    if src is None:
+        pngs = sorted(CODEX_IMAGES.glob("*/*.png"), key=lambda p: p.stat().st_mtime)
+        if not pngs:
+            sys.exit(f"--from-codex: no PNG under {CODEX_IMAGES}")
+        src = pngs[-1]
+    img = Image.open(src).convert("RGBA")
+    w, h = img.size
+    corners = [img.getpixel(p)[3] for p in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1))]
+    if max(corners) > 16:
+        sys.exit(f"--from-codex: {src} has an opaque background (corner alpha {corners}); ask Codex for a transparent cut-out")
+    if src.resolve() != MOTIF.resolve():
+        shutil.copyfile(src, MOTIF)
+    print(f"motif <- {src}")
+
+
 def main() -> None:
+    global FG, SCREEN_MAX
+    args = sys.argv[1:]
+    mono = None
+    if "--mono-threshold" in args:
+        i = args.index("--mono-threshold")
+        mono = int(args[i + 1])
+        del args[i:i + 2]
+    if args and args[0] == "--from-codex":
+        import_codex_motif(Path(args[1]) if len(args) > 1 else None)
+    elif args:
+        sys.exit(__doc__)
+    FG = Image.open(MOTIF).convert("RGBA")
+    SCREEN_MAX = mono if mono is not None else screen_threshold(FG)
+    print(f"monochrome: screen cut at luminance {SCREEN_MAX}")
     for density, px in DENSITIES.items():
         d = RES / f"mipmap-{density}"
         d.mkdir(parents=True, exist_ok=True)

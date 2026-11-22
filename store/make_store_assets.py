@@ -1,19 +1,29 @@
 """Builds the Google Play store graphics for 포너디.
 
-    python store/make_store_assets.py <raw-screenshot-dir>
+    python store/make_store_assets.py --capture <raw-screenshot-dir>   # capture, then build
+    python store/make_store_assets.py <raw-screenshot-dir>             # build from earlier captures
 
 <raw-screenshot-dir> holds 1080x2400 PNG captures named after DemoActivity states
-(idle, nearby, alert-countdown, found, located, history), taken on the
-fmwp-phone-api36 emulator from a playDebug build:
+(idle, nearby, alert-countdown, found, located, history). --capture takes them itself from the
+one adb device (set ANDROID_SERIAL when there are several), which must run a playDebug build made
+with the default relay (not the -Papp.relayUrl build of scripts/e2e-requester.py, whose relay is
+gone afterwards and leaves an error banner) — use the fmwp-phone-api36 emulator, and tell other
+sessions that share it first. Per state it runs
 
-    adb shell am start -S -n com.jeiel85.ponerdi/io.github.jeiel85.findmywifephone.DemoActivity --es state idle
-    adb exec-out screencap -p > idle.png
+    adb shell am start -S -n com.jeiel85.ponerdi/io.github.jeiel85.findmywifephone.DemoActivity --es state <state>
+
+waits until 포너디's screen is in front (another app popping up fails the run instead of being
+captured), lets it settle for SETTLE_S seconds, and saves `adb exec-out screencap -p`.
 
 Writes store/ko-KR/feature-graphic.png (1024x500) and
 store/ko-KR/phone-screenshots/NN-<state>.png (1080x1920, 9:16 — Play rejects
 the raw 9:20 captures because the long side may be at most twice the short side).
 """
+import io
+import re
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -105,8 +115,52 @@ def feature_graphic(dest: Path) -> None:
     canvas.convert("RGB").save(dest, optimize=True)
 
 
+PACKAGE = "com.jeiel85.ponerdi"
+DEMO = f"{PACKAGE}/io.github.jeiel85.findmywifephone.DemoActivity"
+SETTLE_S = 4          # after the screen is in front: map tiles, entry animations
+FRONT_TIMEOUT_S = 60  # cold start on a loaded emulator can take half a minute
+
+
+def adb(*args: str) -> bytes:
+    return subprocess.run(["adb", *args], check=True, capture_output=True).stdout
+
+
+def front_activity() -> str:
+    out = adb("shell", "dumpsys", "activity", "activities").decode(errors="replace")
+    m = re.search(r"topResumedActivity=ActivityRecord\{\S+ \S+ (\S+)", out)
+    return m.group(1) if m else ""
+
+
+def capture(raw_dir: Path) -> None:
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    for state, _, _ in SHOTS:
+        adb("shell", "am", "start", "-S", "-n", DEMO, "--es", "state", state)
+        deadline = time.monotonic() + FRONT_TIMEOUT_S
+        while True:
+            top = front_activity()
+            # DemoActivity finishes itself and opens MainActivity or AlertActivity.
+            if top.startswith(PACKAGE + "/") and "DemoActivity" not in top:
+                break
+            if time.monotonic() > deadline:
+                sys.exit(f"capture {state}: 포너디 never came to the front (top: {top or 'none'})")
+            time.sleep(1)
+        time.sleep(SETTLE_S)
+        if not front_activity().startswith(PACKAGE + "/"):
+            sys.exit(f"capture {state}: another app took the screen ({front_activity()})")
+        png = adb("exec-out", "screencap", "-p")
+        size = Image.open(io.BytesIO(png)).size
+        if size != (1080, 2400):
+            sys.exit(f"capture {state}: screen is {size}, expected 1080x2400 (fmwp-phone-api36)")
+        (raw_dir / f"{state}.png").write_bytes(png)
+        print("captured", state)
+
+
 def main() -> None:
-    raw_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else sys.exit(__doc__)
+    args = sys.argv[1:]
+    if args[:1] == ["--capture"] and len(args) == 2:
+        capture(Path(args[1]))
+        args = args[1:]
+    raw_dir = Path(args[0]) if len(args) == 1 else sys.exit(__doc__)
     shots_dir = OUT / "phone-screenshots"
     shots_dir.mkdir(parents=True, exist_ok=True)
     for i, (state, title, sub) in enumerate(SHOTS, 1):
