@@ -20,3 +20,15 @@ Play 양식은 "백그라운드 위치를 가장 많이 쓰는 기능 **1개만*
 ## 포그라운드 서비스
 
 바뀐 것 없음. 마지막 위치는 WorkManager 작업 안에서 한 번 측위하며 포그라운드 서비스를 쓰지 않습니다.
+
+## 정합 확인 지문
+
+CI가 `python scripts/check-declarations.py`로 아래 세 가지가 바뀌었는지 봅니다. 권한(`<uses-permission>`), 포그라운드 서비스 유형,
+위치 권한 요청 전 안내 대화상자(LocationDisclosure) 중 하나라도 바뀌면 CI가 실패합니다. 그러면 위 선언·영상·개인정보처리방침이
+여전히 맞는지 Play Console과 대조하고(필요하면 선언을 고치고), `python scripts/check-declarations.py --update`로 지문을 새로 기록합니다.
+
+```text
+fingerprint permissions: a6e1e40163e64b00
+fingerprint services: 3fca7b923464c14d
+fingerprint disclosure: b2998a10e92a3e7e
+```
