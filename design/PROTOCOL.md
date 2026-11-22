@@ -26,7 +26,7 @@
 
 | 메서드 | 경로 | 인증 | 본문 | 성공 | 주요 오류 |
 |---|---|---|---|---|---|
-| GET | `/v1/health` | – | – | 200 `{ok}` | |
+| GET | `/v1/health` | – | – | 200 `{ok}` (D1 응답·FCM 키로 토큰 발급 확인) | 503 `db` · `fcm` |
 | POST | `/v1/devices` | – | `{fcmToken}` | 201 `{deviceId, token}` | 400 `invalid_fcm_token` · 429 (IP당 시간 20회) |
 | PUT | `/v1/devices/me` | ✓ | `{fcmToken}` | 200 | 401 |
 | DELETE | `/v1/devices/me` | ✓ | – | 200 (링크·초대 함께 삭제) | 401 |

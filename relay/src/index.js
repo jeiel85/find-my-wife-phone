@@ -4,7 +4,7 @@
 // encrypted envelope. It keeps: device id + hashed bearer token + FCM token, who may wake
 // whom (links), one-time pairing invites and rate-limit counters. See design/PROTOCOL.md.
 
-import { parseServiceAccount, sendData } from "./fcm.js";
+import { fcmReady, parseServiceAccount, sendData } from "./fcm.js";
 
 const B64URL = /^[A-Za-z0-9_-]+$/;
 const DEVICE_ID = /^[A-Za-z0-9_-]{22}$/;
@@ -139,7 +139,7 @@ async function route(req, env, deps) {
   const now = deps.now();
   const path = url.pathname;
 
-  if (req.method === "GET" && path === "/v1/health") return json(200, { ok: true, schema: 1 });
+  if (req.method === "GET" && path === "/v1/health") return health(env, deps);
 
   if (req.method === "POST" && path === "/v1/devices") {
     const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
@@ -248,6 +248,24 @@ async function route(req, env, deps) {
   }
 
   throw new HttpError(404, "not_found");
+}
+
+// For the outside monitor (.github/workflows/relay-health.yml, hardening #2): 503 when D1 does not answer or
+// the FCM key no longer gets a token, i.e. when every ring would fail. Only the failing part is named.
+async function health(env, deps) {
+  try {
+    await env.DB.prepare("SELECT 1").first();
+  } catch (e) {
+    console.error("health db", e?.stack ?? e);
+    return json(503, { ok: false, schema: 1, error: "db" });
+  }
+  try {
+    await fcmReady(parseServiceAccount(env.FCM_SERVICE_ACCOUNT), deps.fetch, deps.now());
+  } catch (e) {
+    console.error("health fcm", e?.message ?? e);
+    return json(503, { ok: false, schema: 1, error: "fcm" });
+  }
+  return json(200, { ok: true, schema: 1 });
 }
 
 export async function handle(req, env, deps = { fetch, now: Date.now }) {
