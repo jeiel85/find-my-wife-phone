@@ -34,3 +34,6 @@ dist/
 
 # JVM crash logs (e.g. Gradle out of memory)
 hs_err_pid*.log
+
+# Python
+__pycache__/
