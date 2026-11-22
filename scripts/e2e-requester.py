@@ -160,7 +160,8 @@ def main() -> None:
         wait_event(events, lambda e: e.get("event") == "paired", "the pairing push", timeout=60)
 
         print("• 울리기")
-        adb("shell", "am", "start", "-n", f"{PKG}/io.github.jeiel85.findmywifephone.ui.MainActivity")
+        # The link left MainActivity (singleTask) on its pairing screen; ask for home explicitly.
+        adb("shell", "am", "start", "-n", f"{PKG}/io.github.jeiel85.findmywifephone.ui.MainActivity", "--es", "screen", "home")
         time.sleep(3)
         x, y = wait_ui("울리기")
         adb("shell", "input", "tap", str(x), str(y))

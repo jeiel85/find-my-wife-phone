@@ -31,6 +31,12 @@ adb uninstall "$PKG" >/dev/null 2>&1 || true
 adb install "$TMP/find-my-wife-phone.apk" >/dev/null
 version() { adb shell dumpsys package "$PKG" | sed -n 's/.*versionName=\([^ ]*\).*/\1/p' | head -1 | tr -d '\r'; }
 echo "• installed $(version)"
+# On a phone the app is its own installer of record after its first self-update and the owner has
+# allowed "install unknown apps" for it; only then may Android update it without asking. Recreate
+# that state instead of the adb-installed one, so a time-out below means a real regression.
+adb shell pm set-installer "$PKG" "$PKG" >/dev/null || { echo "✗ could not make $PKG its own installer"; exit 1; }
+adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES allow
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 
 # The app schedules its update worker on start; the worker skips while the app is on screen.
 adb logcat -c
@@ -46,6 +52,11 @@ deadline=$((SECONDS + WAIT_S))
 while [ $SECONDS -lt $deadline ]; do
   v=$(version)
   if [ "v$v" = "$LATEST" ]; then echo "✓ updated itself to $v"; exit 0; fi
+  # Updater.onNeedsConfirm: Android wanted the owner to confirm, i.e. the silent update did not happen.
+  if adb shell dumpsys notification --noredact | tr -d '\r' | grep -q "준비됐어요"; then
+    echo "✗ the update was downloaded but Android asked for confirmation instead of installing silently"
+    exit 1
+  fi
   sleep 5
 done
 echo "✗ still $(version) after ${WAIT_S}s; updater log:"
