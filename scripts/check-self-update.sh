@@ -8,6 +8,7 @@
 # Run it right after scripts/release.sh published the new release. It UNINSTALLS 포너디 from the
 # device (its pairings and history are lost), so it refuses anything but an emulator — use
 # fmwp-phone-api36 and tell other sessions that share it first. Needs gh (to download the APK).
+# Takes about 12 minutes: the update worker's first run waits 10 minutes after the app starts.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PKG=com.jeiel85.ponerdi
@@ -34,19 +35,36 @@ echo "• installed $(version)"
 # On a phone the app is its own installer of record after its first self-update and the owner has
 # allowed "install unknown apps" for it; only then may Android update it without asking. Recreate
 # that state instead of the adb-installed one, so a time-out below means a real regression.
-adb shell pm set-installer "$PKG" "$PKG" >/dev/null || { echo "✗ could not make $PKG its own installer"; exit 1; }
+# (`pm set-installer` is refused for an installer with another signature; reinstalling the same APK
+# with -i works once the package exists.)
+adb install -r -i "$PKG" "$TMP/find-my-wife-phone.apk" >/dev/null
+adb shell dumpsys package "$PKG" | tr -d '\r' | grep -q "installerPackageName=$PKG" \
+  || { echo "✗ could not make $PKG its own installer"; exit 1; }
 adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES allow
 adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 
 # The app schedules its update worker on start; the worker skips while the app is on screen.
 adb logcat -c
-adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+started=$SECONDS
 sleep 8
 adb shell input keyevent KEYCODE_HOME
+# UpdateWorker.schedule() gives the first run a 10-minute initial delay, and WorkManager re-defers a
+# job that JobScheduler is forced to start before that. So wait it out, then force the job.
+INITIAL_DELAY_S=${INITIAL_DELAY_S:-600}
+left=$((INITIAL_DELAY_S + 20 - (SECONDS - started)))
+echo "• waiting ${left}s for the update worker's initial delay"
+sleep "$left"
 
-JOBS=$(adb shell dumpsys jobscheduler | tr -d '\r' | sed -n "s/.*JOB #u[0-9]*a*[0-9]*\/\([0-9]*\): [0-9a-f]* $PKG\/androidx.work.*/\1/p" | sort -u)
+# "JOB #u0a226/3: … pkg/androidx.work…" before API 34; "JOB androidx.work.systemjobscheduler:u0a226/3: …" with
+# a job namespace after it. Each line becomes "<namespace or -> <id>".
+JOBS=$(adb shell dumpsys jobscheduler | tr -d '\r' | grep "^ *JOB .*$PKG/androidx.work" \
+  | sed -E 's/^ *JOB (#|([^ :]+):)u[0-9a-z]+\/([0-9]+):.*/\2 \3/; s/^ /- /' | sort -u)
 [ -n "$JOBS" ] || { echo "✗ no WorkManager job for $PKG — did the app start?"; exit 1; }
-for j in $JOBS; do adb shell cmd jobscheduler run -f "$PKG" "$j" >/dev/null; done
+while read -r ns id; do
+  if [ "$ns" = - ]; then adb shell cmd jobscheduler run -f "$PKG" "$id" >/dev/null
+  else adb shell cmd jobscheduler run -f -n "$ns" "$PKG" "$id" >/dev/null; fi
+done <<< "$JOBS"
 
 deadline=$((SECONDS + WAIT_S))
 while [ $SECONDS -lt $deadline ]; do
