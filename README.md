@@ -161,6 +161,23 @@ cd android && ./gradlew testGithubDebugUnitTest assembleGithubDebug -Papp.relayU
 - Play 선언 정합: CI의 `scripts/check-declarations.py`가 권한·포그라운드 서비스·위치 안내 문구 변경을 잡습니다
   (바뀌면 [store/play-declarations.md](store/play-declarations.md)를 Play Console과 대조한 뒤 `--update`).
 
+### 릴리스
+
+1. 실기기 체크리스트([design/VERIFY.md](design/VERIFY.md))를 통과하고 `CHANGELOG.md`에 `## v<버전> — <날짜>` 항목을 쓴 뒤
+   `scripts/release.sh <버전>` — GitHub APK 릴리스를 내면서 태그 `v<버전>`을 만듭니다.
+2. 그 태그로 `.github/workflows/play-release.yml`이 돌아 Play용 AAB(play flavor)를 빌드하고, 시험·업로드 키 지문을 확인한 뒤
+   **내부 테스트**와 **비공개 테스트(Alpha)**에 같은 버전을 올립니다(Alpha는 Google 검토 후 공개). 프로덕션에는 올리지 않습니다.
+   출시 노트는 CHANGELOG 그 버전의 목록에서 500자까지 가져옵니다. 비밀값은 GitHub 환경 `play`에만 있고,
+   실행마다 jeiel85가 Actions 화면에서 **승인**해야 시작합니다(main 브랜치·`v*` 태그에서만).
+3. Play에는 **CI만 올립니다.** 같은 버전을 로컬(`scripts/play-bundle.sh` + Play Console이나 `play-publish` 스킬)로 또 올리지 마세요 —
+   이미 쓴 versionCode는 다시 올릴 수 없어 CI가 내부 테스트 업로드에서 실패합니다. `scripts/play-bundle.sh`는 로컬 빌드 확인용으로 남겨 둡니다.
+4. 태그 실행이 실패했으면 고친 뒤 Actions › Play release › Run workflow에서 같은 버전으로 다시 돌립니다.
+   `dry_run`을 켜면 빌드·서명 확인·트랙 조회까지만 하고 올리지 않습니다. 이미 내부 테스트에 올라가 Alpha만 실패했으면
+   `pwsh tools/play-publish.ps1 -PackageName com.jeiel85.ponerdi -Track alpha -ExpectedVersionCode <코드>`로 그 트랙에만 붙입니다.
+
+GitHub 릴리스 워크플로는 따로 없어(`release.sh`가 로컬에서 냄) 같은 태그로 두 번 도는 일은 없습니다. `ci.yml`은 PR·main 푸시에서
+디버그 빌드만 합니다. `tools/play-publish.ps1`은 전역 `play-publish` 스킬 스크립트의 복사본이라, 고칠 때는 원본과 함께 맞춥니다.
+
 ## 라이선스
 
 [MIT](LICENSE)

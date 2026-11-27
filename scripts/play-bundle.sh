@@ -14,7 +14,8 @@ VER="${1:?usage: scripts/play-bundle.sh <version>}"
 [ -f android/release-signing.properties ] || [ -n "${FMWP_RELEASE_STORE_FILE:-}" ] \
   || { echo "✗ release signing properties missing (android/release-signing.properties)"; exit 1; }
 
-(cd android && ./gradlew.bat --console=plain -q -Papp.version="$VER" testPlayDebugUnitTest bundlePlayRelease)
+GRADLEW=./gradlew; [ "${OS:-}" = Windows_NT ] && GRADLEW=./gradlew.bat # CI runs on Linux
+(cd android && $GRADLEW --console=plain -q -Papp.version="$VER" testPlayDebugUnitTest bundlePlayRelease)
 mkdir -p dist
 OUT="dist/ponerdi-play-$VER.aab"
 cp android/app/build/outputs/bundle/playRelease/app-play-release.aab "$OUT"

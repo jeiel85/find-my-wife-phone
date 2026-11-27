@@ -1,0 +1,166 @@
+# Play용 AAB(play flavor)를 CI에서 빌드해 내부 테스트와 비공개 테스트(Alpha) 두 트랙에 올립니다(README "릴리스").
+#
+# - 태그 v<x.y.z>가 올라오면(scripts/release.sh가 GitHub 릴리스를 낼 때) 그 버전을 올립니다.
+# - Actions 화면에서 손으로 돌릴 수도 있습니다(version 입력). dry_run을 켜면 빌드·서명 확인·트랙 조회까지만 하고 올리지 않습니다.
+# 비밀값은 GitHub 환경 'play'에만 있고, 그 환경은 jeiel85의 승인을 받아야 실행됩니다(main 브랜치·v* 태그만).
+# CI(ci.yml)는 PR·main 푸시에서 디버그 빌드만 하므로 이 워크플로와 겹치지 않습니다.
+name: Play release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '버전 (x.y.z, CHANGELOG에 항목이 있어야 함)'
+        required: true
+      dry_run:
+        description: '올리지 않고 빌드·서명 확인·트랙 조회만'
+        type: boolean
+        default: false
+
+concurrency:
+  group: play-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  play:
+    runs-on: ubuntu-latest
+    environment: play
+    timeout-minutes: 40
+    env:
+      PACKAGE: com.jeiel85.ponerdi
+      # 두 채널 공용 릴리스 키 = Play 업로드 키(DECISIONS.md D-10). 다른 키로 서명된 번들은 올리기 전에 멈춥니다.
+      UPLOAD_CERT_SHA256: 'CF:D5:7C:0D:C3:8E:34:9F:35:A8:E9:9B:2F:5A:AA:17:BA:80:7A:24:BE:38:72:82:D0:8D:0F:A8:75:40:A3:7D'
+      KEYSTORE: .keystore/find-my-wife-phone-release.jks
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 버전 정하기
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then VER="${GITHUB_REF_NAME#v}"; else VER="$INPUT_VERSION"; fi
+          [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::버전은 x.y.z여야 합니다: $VER"; exit 1; }
+          grep -q "^## v$VER " CHANGELOG.md || { echo "::error::CHANGELOG.md에 v$VER 항목이 없습니다"; exit 1; }
+          IFS=. read -r MA MI PA <<<"$VER"
+          # android/app/build.gradle.kts와 같은 규칙(major*10000 + minor*100 + patch)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "code=$((MA * 10000 + MI * 100 + PA))" >> "$GITHUB_OUTPUT"
+          echo "dry=${DRY:-false}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 서명 키·Firebase 설정 놓기
+        env:
+          KEYSTORE_B64: ${{ secrets.FMWP_RELEASE_KEYSTORE_B64 }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          mkdir -p .keystore
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KEYSTORE"
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          [ -s "$KEYSTORE" ] && [ -s android/app/google-services.json ]
+
+      - name: 키스토어 인증서가 Play 업로드 키인지 확인
+        env:
+          FMWP_RELEASE_STORE_PASSWORD: ${{ secrets.FMWP_RELEASE_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.FMWP_RELEASE_KEY_ALIAS }}
+        run: |
+          SHA=$(keytool -list -v -keystore "$KEYSTORE" -storepass:env FMWP_RELEASE_STORE_PASSWORD -alias "$ALIAS" \
+            | grep -m1 'SHA256:' | sed 's/^\s*SHA256: *//' | tr -d '\r')
+          [ "$SHA" = "$UPLOAD_CERT_SHA256" ] || { echo "::error::키스토어 인증서가 등록된 업로드 키와 다릅니다: $SHA"; exit 1; }
+          echo "✓ 키스토어 인증서 $SHA"
+
+      - name: AAB 빌드(시험 포함)
+        env:
+          FMWP_RELEASE_STORE_FILE: ../${{ env.KEYSTORE }} # android/ 기준 경로
+          FMWP_RELEASE_STORE_PASSWORD: ${{ secrets.FMWP_RELEASE_STORE_PASSWORD }}
+          FMWP_RELEASE_KEY_ALIAS: ${{ secrets.FMWP_RELEASE_KEY_ALIAS }}
+          FMWP_RELEASE_KEY_PASSWORD: ${{ secrets.FMWP_RELEASE_KEY_PASSWORD }}
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          # 단위 시험(testPlayDebugUnitTest) → bundlePlayRelease → AAB 서명자 지문 확인까지 합니다.
+          scripts/play-bundle.sh "$VER"
+          echo "AAB=dist/ponerdi-play-$VER.aab" >> "$GITHUB_ENV"
+
+      - name: 출시 노트(CHANGELOG에서, 500자까지)
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          ver = os.environ["VER"]
+          lines, on = [], False
+          for line in open("CHANGELOG.md", encoding="utf-8"):
+              line = line.rstrip("\n")
+              if line.startswith("## "):
+                  on = line.startswith(f"## v{ver} ")
+                  continue
+              if on:
+                  lines.append(line)
+          items = []
+          for line in lines:
+              if line.startswith("- "):
+                  items.append(line[2:].strip())
+              elif line.startswith("  ") and items and line.strip():
+                  items[-1] += " " + line.strip()
+          items = ["• " + re.sub(r"\*\*(.+?)\*\*", r"\1", i) for i in items]
+          out = ""
+          for i in items:
+              nxt = (out + "\n" + i) if out else i
+              if len(nxt) > 500:
+                  if not out:
+                      out = i[:499] + "…"
+                  break
+              out = nxt
+          if not out:
+              raise SystemExit(f"v{ver} 항목에 '- ' 목록이 없습니다")
+          open("dist/notes-ko.txt", "w", encoding="utf-8").write(out)
+          print(f"{len(out)}자 / 항목 {len(items)}개")
+          PY
+          cat dist/notes-ko.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ponerdi-play-${{ steps.ver.outputs.version }}
+          path: |
+            ${{ env.AAB }}
+            dist/notes-ko.txt
+          retention-days: 30
+
+      - name: Play 트랙 상태(올리기 전)
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: pwsh -NoProfile -File tools/play-publish.ps1 -PackageName "$PACKAGE" -ShowTracks
+
+      - name: 내부 테스트·비공개 테스트(Alpha)에 올리기
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          CODE: ${{ steps.ver.outputs.code }}
+          DRY: ${{ steps.ver.outputs.dry }}
+        run: |
+          DRYFLAG=(); [ "$DRY" = true ] && DRYFLAG=(-DryRun)
+          pwsh -NoProfile -File tools/play-publish.ps1 -PackageName "$PACKAGE" -Track internal -AabPath "$AAB" \
+            -ExpectedUploadCertSha256 "$UPLOAD_CERT_SHA256" -NotesKoFile dist/notes-ko.txt "${DRYFLAG[@]}"
+          pwsh -NoProfile -File tools/play-publish.ps1 -PackageName "$PACKAGE" -Track alpha -ExpectedVersionCode "$CODE" \
+            -NotesKoFile dist/notes-ko.txt "${DRYFLAG[@]}"
+
+      - name: Play 트랙 상태(올린 뒤)
+        if: steps.ver.outputs.dry != 'true'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: pwsh -NoProfile -File tools/play-publish.ps1 -PackageName "$PACKAGE" -ShowTracks
+
+      - name: 키 지우기
+        if: always()
+        run: rm -f "$KEYSTORE" android/app/google-services.json
